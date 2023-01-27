@@ -2,21 +2,22 @@
 
 #include "../../util/sanitize/fd_sanitize.h"
 
+#include <stddef.h>
+
 /* Data layout checks */
+
+FD_STATIC_ASSERT( offsetof( fd_entry_hdr_t, hash_cnt )==0x00UL, alignment );
+FD_STATIC_ASSERT( offsetof( fd_entry_hdr_t, hash     )==0x08UL, alignment );
+FD_STATIC_ASSERT( offsetof( fd_entry_hdr_t, txn_cnt  )==0x28UL, alignment );
+FD_STATIC_ASSERT( sizeof  ( fd_entry_hdr_t           )==0x30UL, alignment );
+FD_STATIC_ASSERT( alignof ( fd_entry_hdr_t           )==0x01UL, alignment );
+
 FD_STATIC_ASSERT( alignof(fd_entry_t)== 64UL, alignment );
 FD_STATIC_ASSERT( sizeof (fd_entry_t)==128UL, alignment );
 
 void
 test_entry() {
   /* Ensure footprint is multiple of align */
-
-  /*  for( ulong i=0UL; i<64UL; i++ ) {
-    do { if( __builtin_expect( !!(!(( fd_entry_footprint( i ) %
-# 14 "src/ballet/block/test_block.c" 3 4
-   _Alignof
-# 14 "src/ballet/block/test_block.c"
-   (fd_entry_t) )==0UL)), 0L ) ) do { long _fd_log_msg_now = fd_log_wallclock(); fd_log_private_2( 4, _fd_log_msg_now, "src/ballet/block/test_block.c", 14, __func__, fd_log_private_0 ( "FAIL: " "( fd_entry_footprint( i ) % alignof(fd_entry_t) )==0UL" ) ); } while(0); } while(0);
-  }*/
 
   for( ulong i=0UL; i<64UL; i++ ) {
     FD_TEST( ( fd_entry_footprint( i ) % alignof(fd_entry_t) )==0UL );

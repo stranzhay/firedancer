@@ -110,19 +110,19 @@ fd_entry_delete( void * shentry ) {
   return shentry;
 }
 
-void *
+int
 fd_entry_deserialize( fd_entry_t * entry,
-                      void *       buf,
-                      ulong        buf_sz,
+                      void **      buf,
+                      ulong *      buf_sz,
                       fd_txn_parse_counters_t * counters_opt ) {
-# define ADVANCE(n) do {                         \
-  if( FD_UNLIKELY( buf_sz < (n) ) ) return NULL; \
-  buf     = (void *)((char *)buf + (n));         \
-  buf_sz -= (n);                                 \
+# define ADVANCE(n) do {                       \
+  if( FD_UNLIKELY( *buf_sz < (n) ) ) return 0; \
+  *buf     = (void *)((char *)*buf + (n));     \
+  *buf_sz -= (n);                              \
 } while(0)
 
   /* Copy entry header */
-  fd_entry_hdr_t * hdr = (fd_entry_hdr_t *)buf;
+  fd_entry_hdr_t * hdr = (fd_entry_hdr_t *)*buf;
   ADVANCE( sizeof(fd_entry_hdr_t) );
   fd_memcpy( &entry->hdr, hdr, sizeof(fd_entry_hdr_t) );
 
@@ -146,7 +146,7 @@ fd_entry_deserialize( fd_entry_t * entry,
     raw_entry->txn_sz = (ushort)txn_sz;
   }
 
-  return buf;
+  return 1;
 
 # undef ADVANCE
 }

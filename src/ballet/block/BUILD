@@ -1,15 +1,20 @@
-load("//bazel:fd_build_system.bzl", "fd_cc_library")
+load("//bazel:fd_build_system.bzl", "fd_cc_library", "fd_cc_test")
 
 package(default_visibility = ["//src/ballet:__subpackages__"])
 
 fd_cc_library(
     name = "block",
+    srcs = [
+        "fd_block.c",
+    ],
     hdrs = [
         "fd_block.h",
     ],
     deps = [
         "//src/ballet:base_lib",
+        "//src/ballet/bmtree",
         "//src/ballet/sha256",
+        "//src/ballet/txn",
     ],
 )
 
