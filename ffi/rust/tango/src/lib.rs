@@ -3,7 +3,7 @@ use std::{
     hint::spin_loop,
     mem::transmute,
     ops::Not,
-    ptr,
+    ptr, sync::atomic::{Ordering, compiler_fence},
 };
 use anyhow::{
     anyhow,
@@ -20,7 +20,7 @@ use firedancer_sys::{
         fd_mcache_line_idx,
         fd_mcache_seq_laddr_const,
         fd_mcache_seq_query,
-        fd_tempo_lazy_default,
+        fd_tempo_lazy_default, fd_fseq_join, fd_fseq_app_laddr, FD_FSEQ_DIAG_PUB_CNT, FD_FSEQ_DIAG_PUB_SZ, FD_FSEQ_DIAG_FILT_CNT, FD_FSEQ_DIAG_FILT_SZ, FD_FSEQ_DIAG_OVRNP_CNT, FD_FSEQ_DIAG_OVRNR_CNT, FD_FSEQ_DIAG_SLOW_CNT,
     },
     util::{
         fd_pod_query_subpod,
@@ -38,6 +38,7 @@ struct Tango {
     cfg_path: String,
     mcache_out_path: String,
     dcache_out_path: String,
+    fseq_path: String,
 
     /// Output crossbeam channel to send what we have read from the Tango consumer on
     output: crossbeam_channel::Sender<Vec<u8>>,
@@ -89,19 +90,49 @@ impl Tango {
             .then(|| ())
             .ok_or(anyhow!("fd_wksp_containing failed"))?;
 
+        // Hook up to flow control diagnostics
+        let fseq = fd_fseq_join( fd_wksp_pod_map( cfg_pod, CString::new(self.fseq_path.clone())?.as_ptr() ) );
+        fseq
+            .is_null()
+            .not()
+            .then(|| ())
+            .ok_or(anyhow!("fd_fseq_join failed"))?;
+        let fseq_diag = fd_fseq_app_laddr( fseq ) as *mut u64;
+        compiler_fence(Ordering::AcqRel);
+        fseq_diag.add(FD_FSEQ_DIAG_PUB_CNT.try_into().unwrap()).write_volatile(0);
+        fseq_diag.add(FD_FSEQ_DIAG_PUB_SZ.try_into().unwrap()).write_volatile(0);
+        fseq_diag.add(FD_FSEQ_DIAG_FILT_CNT.try_into().unwrap()).write_volatile(0);
+        fseq_diag.add(FD_FSEQ_DIAG_FILT_SZ.try_into().unwrap()).write_volatile(0);
+        fseq_diag.add(FD_FSEQ_DIAG_OVRNP_CNT.try_into().unwrap()).write_volatile(0);
+        fseq_diag.add(FD_FSEQ_DIAG_OVRNR_CNT.try_into().unwrap()).write_volatile(0);
+        fseq_diag.add(FD_FSEQ_DIAG_SLOW_CNT.try_into().unwrap()).write_volatile(0);
+        compiler_fence(Ordering::AcqRel);
+        let accum_pub_cnt: u64 = 0;
+        let accum_pub_sz: u64 = 0;
+        let accum_ovrnp_cnt: u64 = 0;
+        let accum_ovrnr_cnt: u64 = 0;
+
         // Set frequency of houskeeping operations
         let mut next_housekeeping = Utc::now().timestamp_nanos();
         let housekeeping_interval_ns = fd_tempo_lazy_default(depth);
         let mut rng = rand::thread_rng();
+
+        // TODO: split this logic into constructor and destructor,
+        //  so we have safe clean-up
 
         // Continually consume data from the queue
         loop {
             // Do housekeeping at intervals
             let now = Utc::now().timestamp_nanos();
             if now >= next_housekeeping {
+                compiler_fence(Ordering::AcqRel);
+                
+                compiler_fence(Ordering::AcqRel);
+
+
                 // TODO: housekeeping; track/forward diagnostic counters
                 next_housekeeping =
-                    now + rng.gen_range(housekeeping_interval_ns..=2 * housekeeping_interval_ns)
+                    now + rng.gen_range(housekeeping_interval_ns..=2 * housekeeping_interval_ns)                
             }
 
             // Overrun check
