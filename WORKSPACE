@@ -216,7 +216,7 @@ http_archive(
 http_archive(
     name = "openssl",
     build_file = "//:third_party/openssl.BUILD",
-    sha256 = "5635874b984983bcb658a9f79f167f1a10d84106c3ff6a4151fc19d984c735a8",
+    sha256 = "f978051da323deab6e982f6bf07d40c063ff3a1f18760c731536accb7d980015",
     strip_prefix = "openssl-OpenSSL_1_1_1s-quic1",
     url = "https://github.com/quictls/openssl/archive/refs/tags/OpenSSL_1_1_1s+quic1.tar.gz",
 )

@@ -2711,9 +2711,10 @@ fd_quic_conn_tx( fd_quic_t * quic, fd_quic_conn_t * conn ) {
 
       case FD_QUIC_CONN_STATE_PEER_CLOSE:
         peer_close = 1u;
-        /* fall thru */
+      __attribute__((fallthrough));
 
       case FD_QUIC_CONN_STATE_ABORT:
+      __attribute__((fallthrough));
       case FD_QUIC_CONN_STATE_CLOSE_PENDING:
         closing = 1u;
     }
