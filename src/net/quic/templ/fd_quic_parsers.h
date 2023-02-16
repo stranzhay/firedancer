@@ -165,6 +165,8 @@
     cur_bit   = 0;                                                     \
     if( FD_UNLIKELY( BYTES>sz ) ) return FD_QUIC_PARSE_FAIL;           \
     tmp_len = BYTES / sizeof(fd_quic_##TYPE);                          \
+    if( tmp_len * sizeof( fd_quic_##TYPE ) >                           \
+        sizeof( out->NAME ) ) return FD_QUIC_PARSE_FAIL;               \
     for( ulong j=0; j<tmp_len; ++j ) {                                 \
       cur_byte += FD_TEMPL_PARSE(TYPE,out->NAME[j],buf+cur_byte);      \
     }
