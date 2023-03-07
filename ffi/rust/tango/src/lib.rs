@@ -176,6 +176,7 @@ impl Tango {
             if seq_found != seq {
                 // Check to see if we have caught up to the producer - if so, wait
                 if seq_found < seq {
+                    // println!("caught up");
                     spin_loop();
                     continue;
                 }
@@ -183,6 +184,7 @@ impl Tango {
                 // We were overrun by the producer. Keep processing from the new sequence number.
                 accum_ovrnp_cnt += 1;
                 seq = seq_found;
+                println!("overran");
             }
 
             // Speculatively copy data out of dcache
@@ -200,13 +202,14 @@ impl Tango {
             if seq_found != seq {
                 accum_ovrnr_cnt += 1;
                 seq = seq_found;
+                println!("overran while processing");
                 continue;
             }
 
             accum_pub_cnt += 1;
             accum_pub_sz += bytes.len() as u64;
 
-            println!("received data");
+            println!("received {} bytes: {:?}", bytes.len(), bytes);
 
             // Update seq and mline
             seq += 1;
