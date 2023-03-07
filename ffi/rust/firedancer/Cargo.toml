@@ -3,7 +3,7 @@ name = "ballet"
 version = "0.1.0"
 edition = "2021"
 authors = ["Firedancer Contributors <firedancer-devs@jumptrading.com>"]
-description = "Safe wrappers for interacting with Firedancer ballet components"
+description = "Safe user-facing wrappers for interacting with Firedancer components"
 license = "Apache-2.0"
 
 [dependencies]

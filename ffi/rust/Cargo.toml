@@ -1,5 +1,5 @@
 [workspace]
 members = [
     "firedancer-sys",
-    "ballet",
+    "firedancer",
 ]
