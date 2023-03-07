@@ -1,9 +1,9 @@
 use std::{
     ffi::CString,
     hint::spin_loop,
-    mem::transmute,
+    mem::{transmute, self},
     ops::Not,
-    ptr, sync::atomic::{Ordering, compiler_fence},
+    ptr, sync::atomic::{Ordering, compiler_fence}, os::raw::c_int,
 };
 use anyhow::{
     anyhow,
@@ -26,39 +26,32 @@ use firedancer_sys::{
         fd_pod_query_subpod,
         fd_wksp_containing,
         fd_wksp_pod_attach,
-        fd_wksp_pod_map,
+        fd_wksp_pod_map, fd_wksp_map, fd_boot,
     },
 };
+use libc::c_char;
 use rand::prelude::*;
 
 /// Tango exposes a simple API for consuming from a Tango mcache/dcache queue.
+/// This is an unreliable consumer: if the producer overruns the consumer, the 
+/// consumer will skip data to catch up with the producer.
 struct Tango {
     /// Configuration
-    pod_gaddr: String,
-    cfg_path: String,
-    mcache_out_path: String,
-    dcache_out_path: String,
-    fseq_path: String,
-
-    /// Output crossbeam channel to send what we have read from the Tango consumer on
-    output: crossbeam_channel::Sender<Vec<u8>>,
+    // TODO: proper config, for now hard-code mcache and dcache
+    mcache: String,
+    dcache: String,
+    fseq: String,
 }
 
 impl Tango {
     pub unsafe fn run(&self) -> Result<()> {
-        // Load configuration
-        let pod = fd_wksp_pod_attach(CString::new(self.pod_gaddr.clone())?.as_ptr());
-        let cfg_pod = fd_pod_query_subpod(pod, CString::new(self.cfg_path.clone())?.as_ptr());
-        cfg_pod
-            .is_null()
-            .not()
-            .then(|| ())
-            .ok_or(anyhow!("pod config path not found"))?;
+        // Boot up the Firedancer tile        
+        let mut argv = get_strings(&mut c_int::from(2));
+        fd_boot(&mut c_int::from(2), &mut argv);
 
         // Join the mcache
-        let mcache = fd_mcache_join(fd_wksp_pod_map(
-            cfg_pod,
-            CString::new(self.mcache_out_path.clone())?.as_ptr(),
+        let mcache = fd_mcache_join(fd_wksp_map(
+            CString::new(self.mcache.clone())?.as_ptr(),
         ));
         mcache
             .is_null()
@@ -67,9 +60,8 @@ impl Tango {
             .ok_or(anyhow!("fd_mcache_join failed"))?;
 
         // Join the dcache
-        let dcache = fd_dcache_join(fd_wksp_pod_map(
-            cfg_pod,
-            CString::new(self.dcache_out_path.clone())?.as_ptr(),
+        let dcache = fd_dcache_join( fd_wksp_map(
+            CString::new(self.dcache.clone())?.as_ptr(),
         ));
         dcache
             .is_null()
@@ -77,12 +69,13 @@ impl Tango {
             .then(|| ())
             .ok_or(anyhow!("fd_dcache_join failed"))?;
 
-        // Look up the mline address
+        // Look up the mline cache line
         let depth = fd_mcache_depth(mcache);
         let sync = fd_mcache_seq_laddr_const(mcache);
-        let seq = fd_mcache_seq_query(sync);
-        let mcache_line_idx = fd_mcache_line_idx(seq, depth);
-        let mline = mcache.add(mcache_line_idx.try_into().unwrap());
+        let mut seq = fd_mcache_seq_query(sync);
+        let mut mline = mcache.add(fd_mcache_line_idx(seq, depth).try_into().unwrap());
+        
+        // Join the workspace
         let workspace = fd_wksp_containing(transmute(mline));
         workspace
             .is_null()
@@ -91,34 +84,35 @@ impl Tango {
             .ok_or(anyhow!("fd_wksp_containing failed"))?;
 
         // Hook up to flow control diagnostics
-        let fseq = fd_fseq_join( fd_wksp_pod_map( cfg_pod, CString::new(self.fseq_path.clone())?.as_ptr() ) );
+        let fseq = fd_fseq_join( fd_wksp_map( CString::new(self.fseq.clone())?.as_ptr() ) );
         fseq
             .is_null()
             .not()
             .then(|| ())
             .ok_or(anyhow!("fd_fseq_join failed"))?;
         let fseq_diag = fd_fseq_app_laddr( fseq ) as *mut u64;
+
+        let mut accum_pub_cnt: u64 = 0;
+        let mut accum_pub_sz: u64 = 0;
+        let mut accum_ovrnp_cnt: u64 = 0;
+        let mut accum_ovrnr_cnt: u64 = 0;
+
         compiler_fence(Ordering::AcqRel);
-        fseq_diag.add(FD_FSEQ_DIAG_PUB_CNT.try_into().unwrap()).write_volatile(0);
-        fseq_diag.add(FD_FSEQ_DIAG_PUB_SZ.try_into().unwrap()).write_volatile(0);
+        fseq_diag.add(FD_FSEQ_DIAG_PUB_CNT.try_into().unwrap()).write_volatile(accum_pub_cnt);
+        fseq_diag.add(FD_FSEQ_DIAG_PUB_SZ.try_into().unwrap()).write_volatile(accum_pub_sz);
         fseq_diag.add(FD_FSEQ_DIAG_FILT_CNT.try_into().unwrap()).write_volatile(0);
         fseq_diag.add(FD_FSEQ_DIAG_FILT_SZ.try_into().unwrap()).write_volatile(0);
-        fseq_diag.add(FD_FSEQ_DIAG_OVRNP_CNT.try_into().unwrap()).write_volatile(0);
-        fseq_diag.add(FD_FSEQ_DIAG_OVRNR_CNT.try_into().unwrap()).write_volatile(0);
+        fseq_diag.add(FD_FSEQ_DIAG_OVRNP_CNT.try_into().unwrap()).write_volatile(accum_ovrnp_cnt);
+        fseq_diag.add(FD_FSEQ_DIAG_OVRNR_CNT.try_into().unwrap()).write_volatile(accum_ovrnr_cnt);
         fseq_diag.add(FD_FSEQ_DIAG_SLOW_CNT.try_into().unwrap()).write_volatile(0);
         compiler_fence(Ordering::AcqRel);
-        let accum_pub_cnt: u64 = 0;
-        let accum_pub_sz: u64 = 0;
-        let accum_ovrnp_cnt: u64 = 0;
-        let accum_ovrnr_cnt: u64 = 0;
 
         // Set frequency of houskeeping operations
         let mut next_housekeeping = Utc::now().timestamp_nanos();
         let housekeeping_interval_ns = fd_tempo_lazy_default(depth);
         let mut rng = rand::thread_rng();
 
-        // TODO: split this logic into constructor and destructor,
-        //  so we have safe clean-up
+        // TODO: cleanup: fd_kill, leave shared memory objects
 
         // Continually consume data from the queue
         loop {
@@ -126,11 +120,12 @@ impl Tango {
             let now = Utc::now().timestamp_nanos();
             if now >= next_housekeeping {
                 compiler_fence(Ordering::AcqRel);
-                
+                fseq_diag.add(FD_FSEQ_DIAG_PUB_CNT.try_into().unwrap()).write_volatile(accum_pub_cnt);
+                fseq_diag.add(FD_FSEQ_DIAG_PUB_SZ.try_into().unwrap()).write_volatile(accum_pub_sz);
+                fseq_diag.add(FD_FSEQ_DIAG_OVRNP_CNT.try_into().unwrap()).write_volatile(accum_ovrnp_cnt);
+                fseq_diag.add(FD_FSEQ_DIAG_OVRNR_CNT.try_into().unwrap()).write_volatile(accum_ovrnr_cnt);
                 compiler_fence(Ordering::AcqRel);
 
-
-                // TODO: housekeeping; track/forward diagnostic counters
                 next_housekeeping =
                     now + rng.gen_range(housekeeping_interval_ns..=2 * housekeeping_interval_ns)                
             }
@@ -138,13 +133,15 @@ impl Tango {
             // Overrun check
             let seq_found = fd_frag_meta_seq_query(mline);
             if seq_found != seq {
-                // Consumer has either caught up or overrun
+                // Check to see if we have caught up to the producer - if so, wait
                 if seq_found < seq {
                     spin_loop();
                     continue;
                 }
 
-                // TODO: support for proper flow control
+                // We were overrun by the producer. Keep processing from the new sequence number.
+                accum_ovrnp_cnt += 1;
+                seq = seq_found;
             }
 
             // Speculatively copy data out of dcache
@@ -160,11 +157,68 @@ impl Tango {
             // Check the producer hasn't overran us while we were copying the data
             let seq_found = fd_frag_meta_seq_query(mline);
             if seq_found != seq {
+                accum_ovrnr_cnt += 1;
+                seq = seq_found;
                 continue;
             }
 
-            // Send the data on the channel
-            self.output.send(bytes)?;
+            accum_pub_cnt += 1;
+            accum_pub_sz += bytes.len() as u64;
+
+            println!("received data");
+
+            // Update seq and mline
+            seq += 1;
+            mline = mcache.add(fd_mcache_line_idx( seq, depth ).try_into().unwrap());
+
+            // TODO: send the data on the channel
+            // TODO: pop extra two bytes off (tx size, labs stage only accepts raw payloads)
+            // self.output.send(bytes)?;
         }
+    }
+}
+
+unsafe fn get_strings(outlen: *mut c_int) -> *mut *mut c_char {
+    let mut v = vec![];
+
+    // Let's fill a vector with null-terminated strings
+    v.push(CString::new("--tile-cpus").unwrap());
+    v.push(CString::new("0").unwrap());
+
+    // Turning each null-terminated string into a pointer.
+    // `into_raw` takes ownershop, gives us the pointer and does NOT drop the data.
+    let mut out = v
+        .into_iter()
+        .map(|s| s.into_raw())
+        .collect::<Vec<_>>();
+
+    // Make sure we're not wasting space.
+    out.shrink_to_fit();
+    assert!(out.len() == out.capacity());
+
+    // Get the pointer to our vector.
+    let len = out.len();
+    let ptr = out.as_mut_ptr();
+    mem::forget(out);
+
+    // Let's write back the length the caller can expect
+    ptr::write(outlen, len as c_int);
+    
+    // Finally return the data
+    ptr
+}
+
+#[test]
+fn test_basic_tango_consumer() {
+    // FIXME: trying to open /.gigantic/test_ipc
+    //        not            /mnt/.fd/.gigantic/test_ipc
+    // Should be 
+    let tango = Tango {
+        mcache: "test_ipc:2101248".to_string(),
+        dcache: "test_ipc:3158016".to_string(),
+        fseq: "test_ipc:57696256".to_string(),
+    };
+    unsafe {
+        tango.run().expect("consuming data");
     }
 }
