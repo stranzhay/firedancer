@@ -24,6 +24,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d468802bab17cbc0cc575e9b053f41e72aa36bfa6b7f55e3529ffa43161b97fa"
 
 [[package]]
+name = "ballet"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "crossbeam-channel",
+ "firedancer-sys",
+ "libc",
+ "rand",
+ "tokio",
+]
+
+[[package]]
 name = "bindgen"
 version = "0.63.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -577,19 +590,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "tango"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "crossbeam-channel",
- "firedancer-sys",
- "libc",
- "rand",
- "tokio",
 ]
 
 [[package]]
