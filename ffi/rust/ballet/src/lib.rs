@@ -12,6 +12,7 @@ use std::{
         compiler_fence,
         Ordering,
     },
+    thread,
 };
 use anyhow::{
     anyhow,
@@ -52,25 +53,34 @@ use firedancer_sys::{
 use libc::c_char;
 use rand::prelude::*;
 
-/// Tango exposes a simple API for consuming from a Tango mcache/dcache queue.
+/// PackRx exposes a simple API for consuming the output from the ballet pack tile.
 /// This is an unreliable consumer: if the producer overruns the consumer, the
 /// consumer will skip data to catch up with the producer.
-struct Tango {
+struct PackRx {
     /// Configuration
     // TODO: proper config using pod api
     mcache: String,
     dcache: String,
     fseq: String,
+
+    /// Crossbeam channel to send consumed data on
+    out: crossbeam_channel::Sender<Vec<u8>>,
 }
 
-impl Tango {
-    pub fn new(mcache: String, dcache: String, fseq: String) -> Self {
+impl PackRx {
+    pub fn new(
+        mcache: String,
+        dcache: String,
+        fseq: String,
+        out: crossbeam_channel::Sender<Vec<u8>>,
+    ) -> Self {
         Self::boot();
 
         Self {
             mcache,
             dcache,
             fseq,
+            out,
         }
     }
 
@@ -209,15 +219,15 @@ impl Tango {
             accum_pub_cnt += 1;
             accum_pub_sz += bytes.len() as u64;
 
-            println!("received {} bytes: {:?}", bytes.len(), bytes);
-
             // Update seq and mline
             seq += 1;
             mline = mcache.add(fd_mcache_line_idx(seq, depth).try_into().unwrap());
 
-            // TODO: send the data on the channel
-            // TODO: pop extra two bytes off (tx size, labs stage only accepts raw payloads)
-            // self.output.send(bytes)?;
+            // Send the data on the channel
+            if let Err(e) = self.out.send(bytes) {
+                // TODO: pop extra two bytes off somewhere in the pipeline (tx size, labs banking stage only accepts raw payloads)
+                println!("error sending data to output channel: {:?}", e);
+            }
         }
     }
 
@@ -238,7 +248,7 @@ impl Tango {
     }
 }
 
-impl Drop for Tango {
+impl Drop for PackRx {
     fn drop(&mut self) {
         unsafe {
             fd_halt();
@@ -247,13 +257,21 @@ impl Drop for Tango {
 }
 
 #[test]
-fn test_basic_tango_consumer() {
-    let tango = Tango::new(
+fn test_basic_pack_rx() {
+    let (tx, rx) = crossbeam_channel::unbounded();
+
+    let pack_rx = PackRx::new(
         "test_ipc:2101248".to_string(),
         "test_ipc:3158016".to_string(),
         "test_ipc:57696256".to_string(),
+        tx,
     );
+    let _rx_t = thread::spawn(move || loop {
+        let data = rx.recv().unwrap();
+        println!("received {} bytes: {:?}", data.len(), data);
+    });
+
     unsafe {
-        tango.run().expect("consuming data");
+        pack_rx.run().expect("consuming data");
     }
 }
