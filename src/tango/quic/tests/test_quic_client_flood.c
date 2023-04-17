@@ -76,9 +76,9 @@ run_quic_client(
   ushort         dst_port,
   uint           batch_sz ) {
 
-# define MSG_SZ_MIN (1UL)
-# define MSG_SZ_MAX (1232UL-64UL-32UL)
-# define MSG_SIZE_RANGE (MSG_SZ_MAX - MSG_SZ_MIN + 1UL)
+# define PAYLOAD_SZ_MIN (170UL)
+# define PAYLOAD_SZ_MAX (1232UL)
+# define MSG_SIZE_RANGE (PAYLOAD_SZ_MAX - PAYLOAD_SZ_MIN + 1UL)
   fd_aio_pkt_info_t batches[MSG_SIZE_RANGE][1];
 
   do {
@@ -132,42 +132,77 @@ run_quic_client(
     if( FD_UNLIKELY( !sha ) ) FD_LOG_ERR(( "fd_sha512 join failed" ));
 
     ulong ref_msg_mem_footprint = 0UL;
-    for( ulong msg_sz=MSG_SZ_MIN; msg_sz<=MSG_SZ_MAX; msg_sz++ ) ref_msg_mem_footprint += fd_ulong_align_up( msg_sz + 96UL, 128UL );
+    for( ulong payload_sz=PAYLOAD_SZ_MIN; payload_sz<=PAYLOAD_SZ_MAX; payload_sz++ ) ref_msg_mem_footprint += fd_ulong_align_up( payload_sz, 128UL );
     uchar * ref_msg_mem = fd_alloca( 128UL, ref_msg_mem_footprint );
     if( FD_UNLIKELY( !ref_msg_mem ) ) FD_LOG_ERR(( "fd_alloc failed" ));
 
-    uchar * ref_msg[ MSG_SZ_MAX - MSG_SZ_MIN + 1UL ];
-    for( ulong msg_sz=MSG_SZ_MIN; msg_sz<=MSG_SZ_MAX; msg_sz++ ) {
+    uchar * ref_msg[ PAYLOAD_SZ_MAX - PAYLOAD_SZ_MIN + 1UL ];
+    for( ulong payload_sz=PAYLOAD_SZ_MIN; payload_sz<=PAYLOAD_SZ_MAX; payload_sz++ ) {
       /* ref_msg[i] is a pointer to the message with size i */
-      ref_msg[ msg_sz - MSG_SZ_MIN ] = ref_msg_mem;
-      uchar * public_key = ref_msg_mem;
-      uchar * sig        = public_key  + 32UL;
-      uchar * msg        = sig         + 64UL;
-      ref_msg_mem += fd_ulong_align_up( msg_sz + 96UL, 128UL );
+      ref_msg[ payload_sz - PAYLOAD_SZ_MIN ] = ref_msg_mem;
+
+      /* Create something that looks enough like a transaction to pass parsing, sigverify */
+      uchar * payload_iter = ref_msg_mem;
+      *payload_iter = (uchar)1;          payload_iter++; /* 1 signature */
+
+      uchar * sig        = payload_iter; payload_iter += 64UL;
+      uchar * msg        = payload_iter;
+
+      *payload_iter = (uchar)1;          payload_iter++; /* 1 signature (again) */
+      *payload_iter = (uchar)0;          payload_iter++; /* 0 ro signers */
+      *payload_iter = (uchar)1;          payload_iter++; /* 1 ro non-signer, the program id */
+
+      *payload_iter = (uchar)2;          payload_iter++; /* 2 accounts */
+      uchar * public_key = payload_iter; payload_iter += 32UL;
+                                         payload_iter += 32UL; /* program ID */
+                                         payload_iter += 32UL; /* recent blockhash */
+
+      *payload_iter = (uchar)1;          payload_iter++; /* instruction count */
+
+      *payload_iter = (uchar)1;          payload_iter++; /* prog id is 1 */
+
+      ulong instr_data_sz = payload_sz - (ulong)(payload_iter - ref_msg_mem) - 3UL; /* between accounts list and compact u16 data size, always take 3 bytes */
+      if( instr_data_sz < 128UL ) {
+        *payload_iter = (uchar)1;          payload_iter++; /* pass 1 account */
+        *payload_iter = (uchar)1;          payload_iter++; /* which is the program */
+        *payload_iter = (uchar)instr_data_sz; payload_iter++; /* data len */
+      } else {
+        *payload_iter = (uchar)0;          payload_iter++; /* pass 0 accounts */
+        *payload_iter = (uchar)(0x80UL | (instr_data_sz & 0x7FUL) );  payload_iter++; /* size byte 1 */
+        *payload_iter = (uchar)(instr_data_sz >> 7);  payload_iter++; /* size byte 1 */
+      }
+
+      /* Fill the instruction data with random bytes */
+      for( ulong b=0UL; b<instr_data_sz; b++ ) payload_iter[b] = fd_rng_uchar( rng );
 
       /* Generate a public_key / private_key pair for this message */
       ulong private_key[4]; for( ulong i=0UL; i<4UL; i++ ) private_key[i] = fd_rng_ulong( rng );
       fd_ed25519_public_from_private( public_key, private_key, sha );
 
-      /* Make a random message */
-      for( ulong b=0UL; b<msg_sz; b++ ) msg[b] = fd_rng_uchar( rng );
-
       /* Sign it */
-      fd_ed25519_sign( sig, msg, msg_sz, public_key, private_key, sha );
+      fd_ed25519_sign( sig, msg, payload_sz-65UL, public_key, private_key, sha );
+
+
+      /* Advance original pointer */
+      ref_msg_mem += fd_ulong_align_up( payload_sz, 128UL );
     }
 
     /* Sanity check the ref messages verify */
-    for( ulong msg_sz=MSG_SZ_MIN; msg_sz<=MSG_SZ_MAX; msg_sz++ ) {
-      uchar * public_key = ref_msg[ msg_sz - MSG_SZ_MIN ];
-      uchar * sig        = public_key + 32UL;
-      uchar * msg        = sig        + 64UL;
-      FD_TEST( fd_ed25519_verify( msg, msg_sz, sig, public_key, sha )==FD_ED25519_SUCCESS );
+    for( ulong payload_sz=PAYLOAD_SZ_MIN; payload_sz<=PAYLOAD_SZ_MAX; payload_sz++ ) {
+      uchar _txn[ FD_TXN_MAX_SZ ] __attribute__((aligned(2)));
+      uchar    * payload    = ref_msg[ payload_sz - PAYLOAD_SZ_MIN ];
+      ulong      consumed   = fd_txn_parse( payload, payload_sz, _txn, NULL );  FD_TEST( consumed );
+      fd_txn_t * txn = (fd_txn_t *) _txn;
+      uchar    * public_key = &payload[ txn->acct_addr_off ];
+      uchar    * sig        = &payload[ txn->signature_off ];
+      uchar    * msg        = &payload[ txn->message_off   ];
+      FD_TEST( fd_ed25519_verify( msg, payload_sz-txn->message_off, sig, public_key, sha )==FD_ED25519_SUCCESS );
     }
 
     /* Create the QUIC batches, each with a single message in. */
-    for( ulong msg_sz=MSG_SZ_MIN; msg_sz<=MSG_SZ_MAX; msg_sz++ ) {
-      batches[msg_sz - MSG_SZ_MIN]->buf = ref_msg[ msg_sz - MSG_SZ_MIN ];
-      batches[msg_sz - MSG_SZ_MIN]->buf_sz = (ushort)msg_sz;
+    for( ulong payload_sz=PAYLOAD_SZ_MIN; payload_sz<=PAYLOAD_SZ_MAX; payload_sz++ ) {
+      batches[payload_sz - PAYLOAD_SZ_MIN]->buf = ref_msg[ payload_sz - PAYLOAD_SZ_MIN ];
+      batches[payload_sz - PAYLOAD_SZ_MIN]->buf_sz = (ushort)payload_sz;
     }
 
     fd_sha512_delete ( fd_sha512_leave( sha    ) );
@@ -176,7 +211,7 @@ run_quic_client(
 
   ulong sent   = 0;
   long  t0     = fd_log_wallclock();
-  ulong msg_sz = MSG_SZ_MIN;
+  ulong payload_sz = PAYLOAD_SZ_MIN;
 
   cur_stream = NULL;
 
@@ -193,7 +228,7 @@ run_quic_client(
     for( ulong j = 0; j < batch_sz; ++j ) {
 
       if( cur_stream ) {
-        int rc = fd_quic_stream_send( cur_stream, batches[msg_sz - MSG_SZ_MIN], 1 /* batch_sz */, 1 /* fin */ ); /* fin: close stream after sending. last byte of transmission */
+        int rc = fd_quic_stream_send( cur_stream, batches[payload_sz - PAYLOAD_SZ_MIN], 1 /* batch_sz */, 1 /* fin */ ); /* fin: close stream after sending. last byte of transmission */
         FD_LOG_DEBUG(( "fd_quic_stream_send returned %d", rc ));
 
         if( rc == 1 ) {
@@ -202,9 +237,9 @@ run_quic_client(
           /* stream and meta will be recycled when quic notifies the stream
              is closed via my_stream_notify_cb */
 
-          msg_sz++;
-          if ( msg_sz == MSG_SZ_MAX ) {
-            msg_sz = MSG_SZ_MIN;
+          payload_sz++;
+          if ( payload_sz == PAYLOAD_SZ_MAX ) {
+            payload_sz = PAYLOAD_SZ_MIN;
           }
           cur_stream = NULL;
         } else {
