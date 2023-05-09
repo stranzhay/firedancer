@@ -575,8 +575,8 @@ main( int     argc,
       printf( TEXT_NEWLINE );
     }
     printf( TEXT_NEWLINE );
-    printf( "         link |  tot TPS |  tot bps | uniq TPS | uniq bps |   ha tr%% | uniq bw%% | filt tr%% | filt bw%% |           ovrnp cnt |           ovrnr cnt |            slow cnt" TEXT_NEWLINE );
-    printf( "--------------+----------+----------+----------+----------+----------+----------+-----------+----------+---------------------+---------------------+---------------------"    TEXT_NEWLINE );
+    printf( "          link |  tot TPS |  tot bps | uniq TPS | uniq bps |   ha tr%% | uniq bw%% | filt tr%% | filt bw%% |           ovrnp cnt |           ovrnr cnt |            slow cnt" TEXT_NEWLINE );
+    printf( "---------------+----------+----------+----------+----------+----------+----------+----------+----------+---------------------+---------------------+---------------------"    TEXT_NEWLINE );
     long dt = now-then;
     ulong verifyin_link_cnt = fd_ulong_min( verify_cnt, quic_cnt );
     for( ulong i=0; i<verifyin_link_cnt; i++ ) {
