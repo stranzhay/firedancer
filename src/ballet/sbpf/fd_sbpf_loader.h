@@ -12,9 +12,12 @@
 #include "../../util/fd_util_base.h"
 #include "../elf/fd_elf64.h"
 
+<<<<<<< HEAD
 /* FD_SBPF_PHNDX_UNDEF: placeholder for undefined program header index */
 #define FD_SBPF_PHNDX_UNDEF (ULONG_MAX)
 
+=======
+>>>>>>> origin/main
 /* Error types ********************************************************/
 
 /* FIXME make error types more specific */
@@ -47,7 +50,10 @@ typedef struct fd_sbpf_syscalls fd_sbpf_syscalls_t;
 struct __attribute__((aligned(32UL))) fd_sbpf_program_info {
   /* rodata segment to be mapped into VM memory */
   uchar const *  rodata;     /* rodata segment data */
+<<<<<<< HEAD
   ulong          rodata_off; /* number of bytes preceding above data in segment */
+=======
+>>>>>>> origin/main
   ulong          rodata_sz;  /* size of data */
 
   /* text section within rodata segment */
@@ -112,9 +118,9 @@ fd_sbpf_program_load( fd_sbpf_program_t *  prog,
                       ulong                bin_sz,
                       fd_sbpf_syscalls_t * syscalls );
 
-static inline fd_sbpf_program_info_t *
-fd_sbpf_program_get_info( fd_sbpf_program_t * program ) {
-  return (fd_sbpf_program_info_t *) program;
+FD_FN_CONST inline fd_sbpf_program_info_t const *
+fd_sbpf_program_get_info( fd_sbpf_program_t const * program ) {
+  return (fd_sbpf_program_info_t const *) program;
 }
 
 void *

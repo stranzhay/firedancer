@@ -1,5 +1,7 @@
 #include "fd_sbpf_loader.h"
+#include "fd_sbpf_opcodes.h"
 #include "../../util/fd_util.h"
+#include "../../util/bits/fd_sat.h"
 #include "../murmur3/fd_murmur3.h"
 
 #include <stdio.h>
@@ -140,11 +142,14 @@ struct fd_sbpf_elf {
   fd_elf64_shdr const * shdr_eh_frame;
   /* Dynamic loading section headers */
   fd_elf64_shdr const * shdr_dyn;
-  fd_elf64_shdr const * shdr_dynsym;
   fd_elf64_shdr const * shdr_dynstr;
   /* FIXME replace shdr pointers with ushort indices */
 
-  /* Dynamic */
+  /* Dynamic table */
+  fd_elf64_dyn const * dyn;
+  ulong                dyn_cnt;
+
+  /* Dynamic table entries */
   ulong dt_rel;
   ulong dt_relent;
   ulong dt_relsz;
@@ -158,8 +163,13 @@ struct fd_sbpf_elf {
 };
 typedef struct fd_sbpf_elf fd_sbpf_elf_t;
 
+/* FD_SBPF_PHNDX_UNDEF: placeholder for undefined program header index */
+#define FD_SBPF_PHNDX_UNDEF (ULONG_MAX)
+
 /* FD_SBPF_MM_{...}_ADDR are hardcoded virtual addresses of segments
-   in the sBPF virtual machine. */
+   in the sBPF virtual machine.
+
+   FIXME: These should be defined elsewhere */
 
 #define FD_SBPF_MM_PROGRAM_ADDR (0x100000000UL) /* readonly program data */
 #define FD_SBPF_MM_STACK_ADDR   (0x200000000UL) /* stack (with gaps) */
@@ -183,7 +193,6 @@ fd_sbpf_check_ehdr( fd_elf64_ehdr const * ehdr,
   REQUIRE( ehdr->e_ident[ FD_ELF_EI_DATA       ]==FD_ELF_DATA_LE    );
   REQUIRE( ehdr->e_ident[ FD_ELF_EI_VERSION    ]==1                 );
   REQUIRE( ehdr->e_ident[ FD_ELF_EI_OSABI      ]==FD_ELF_OSABI_NONE );
-  REQUIRE( ehdr->e_ident[ FD_ELF_EI_ABIVERSION ]==0                 );
 
   /* Validate ... */
   REQUIRE( ehdr->e_type     ==FD_ELF_ET_DYN         );
@@ -231,18 +240,6 @@ fd_sbpf_check_ehdr( fd_elf64_ehdr const * ehdr,
   return 0;
 }
 
-static inline ulong
-fd_ulong_sat_add( ulong x, ulong y ) {
-  ulong z = x+y;
-  return z | ((ulong)(z>=x)-1UL);
-}
-
-static inline ulong
-fd_ulong_sat_sub( ulong x, ulong y ) {
-  ulong z = x-y;
-  return z & ((ulong)(z>x)-1UL);
-}
-
 /* fd_sbpf_load_shdrs parses the program header table.
 
    Assumes that ...
@@ -273,7 +270,6 @@ fd_sbpf_load_phdrs( fd_sbpf_elf_t * prog,
     switch( phdr[i].p_type ) {
     case FD_ELF_PT_DYNAMIC:
       /* Remember first PT_DYNAMIC segment */
-      /* TODO: Fail on duplicate? */
       if( FD_LIKELY( prog->phndx_dyn==FD_SBPF_PHNDX_UNDEF ) )
         prog->phndx_dyn = i;
       break;
@@ -308,6 +304,10 @@ fd_sbpf_load_shdrs( fd_sbpf_elf_t * prog,
                     uchar *         bin,
                     ulong           bin_sz ) {
 
+  /* File Header */
+  ulong const eh_offset = 0UL;
+  ulong const eh_offend = sizeof(fd_elf64_ehdr);
+
   /* Section Header Table */
   ulong const sht_offset = prog->ehdr.e_shoff;
   ulong const sht_cnt    = prog->ehdr.e_shnum;
@@ -339,7 +339,7 @@ fd_sbpf_load_shdrs( fd_sbpf_elf_t * prog,
 
   ulong min_sh_offset = 0UL;  /* lowest permitted section offset */
 
-  for( ulong i=1; i<sht_cnt; i++ ) {
+  for( ulong i=0UL; i<sht_cnt; i++ ) {
     uint  sh_type   = shdr[ i ].sh_type;
     uint  sh_name   = shdr[ i ].sh_name;
     ulong sh_offset = shdr[ i ].sh_offset;
@@ -352,7 +352,7 @@ fd_sbpf_load_shdrs( fd_sbpf_elf_t * prog,
 
     if( sh_type!=FD_ELF_SHT_NOBITS ) {
       /* Overlap checks */
-      REQUIRE( sh_offset >= sizeof(fd_elf64_ehdr)                ); /* overlaps ELF file header */
+      REQUIRE( (sh_offset>=eh_offend ) | (sh_offend<=eh_offset ) ); /* overlaps ELF file header */
       REQUIRE( (sh_offset>=pht_offend) | (sh_offend<=pht_offset) ); /* overlaps program header table */
       REQUIRE( (sh_offset>=sht_offend) | (sh_offend<=sht_offset) ); /* overlaps section header table */
       /* Ordering and overlap check */
@@ -362,12 +362,9 @@ fd_sbpf_load_shdrs( fd_sbpf_elf_t * prog,
 
     if( sh_type==FD_ELF_SHT_DYNAMIC ) {
       /* Remember first SHT_DYNAMIC segment */
-      /* TODO: Fail on duplicate? */
       if( FD_LIKELY( !prog->shdr_dyn ) )
         prog->shdr_dyn = &shdr[ i ];
     }
-
-    /* TODO check section offset order */
 
     ulong name_off = shstr_off + (ulong)sh_name;
     REQUIRE( name_off<=bin_sz ); /* out of bounds */
@@ -389,7 +386,6 @@ fd_sbpf_load_shdrs( fd_sbpf_elf_t * prog,
     else if( 0==strcmp ( name, ".rodata"        ) ) prog->shdr_rodata      = &shdr[ i ];
     else if( 0==strcmp ( name, ".data.rel.ro"   ) ) prog->shdr_data_rel_ro = &shdr[ i ];
     else if( 0==strcmp ( name, ".eh_frame"      ) ) prog->shdr_eh_frame    = &shdr[ i ];
-    else if( 0==strcmp ( name, ".dynsym"        ) ) prog->shdr_dynsym      = &shdr[ i ];
     else if( 0==strcmp ( name, ".dynstr"        ) ) prog->shdr_dynstr      = &shdr[ i ];
     else if( 0==strncmp( name, ".bss",      4UL ) ) FAIL();
     else if( 0==strncmp( name, ".data.rel", 9UL ) ) {} /* ignore */
@@ -402,15 +398,6 @@ fd_sbpf_load_shdrs( fd_sbpf_elf_t * prog,
   REQUIRE( (!!prog->shdr_text) && (prog->shdr_text->sh_type != FD_ELF_SHT_NULL) ); /* check for missing text section */
   REQUIRE( (prog->shdr_text->sh_addr <= prog->ehdr.e_entry) & /* check that entrypoint is in text VM range */
            (prog->ehdr.e_entry       <  fd_ulong_sat_add( prog->shdr_text->sh_addr, prog->shdr_text->sh_size ) ) );
-
-  if( prog->shdr_dynsym ) {
-    ulong sh_offset = prog->shdr_dynsym->sh_offset;
-    ulong sh_size   = prog->shdr_dynsym->sh_size;
-    REQUIRE( (sh_offset+sh_size>=sh_offset) & (sh_offset+sh_size<=bin_sz) );
-    prog->dynsym = (fd_elf64_sym *)( bin+sh_offset );
-    /* FIXME alignment check? */
-    prog->dynsym_cnt = sh_size/sizeof(fd_elf64_sym);
-  }
 
   if( prog->shdr_dynstr ) {
     ulong sh_offset = prog->shdr_dynstr->sh_offset;
@@ -425,52 +412,114 @@ fd_sbpf_load_shdrs( fd_sbpf_elf_t * prog,
 }
 
 static int
-fd_sbpf_load_dynamic( fd_sbpf_elf_t * prog,
-                      uchar *         bin,
+fd_sbpf_find_dynamic( fd_sbpf_elf_t * prog,
+                      uchar const *   bin,
                       ulong           bin_sz ) {
-  (void)bin;
 
-  ulong dyn_off;
-  ulong dyn_sz;
+  /* Try first PT_DYNAMIC in program header table */
 
   if( prog->phndx_dyn!=FD_SBPF_PHNDX_UNDEF ) {
-    dyn_off = prog->phdrs[ prog->phndx_dyn ].p_offset;
-    dyn_sz  = prog->phdrs[ prog->phndx_dyn ].p_filesz;  /* exceeds dynamic table, unaligned */
-    //FD_LOG_DEBUG(( "Using dynamic segment (phndx=%#lx off=%#lx sz=%#lx)",
-    //                prog->phndx_dyn, dyn_off, dyn_sz ));
-  } else if( prog->shdr_dyn ) {
-    dyn_off = prog->shdr_dyn->sh_offset;
-    dyn_sz  = prog->shdr_dyn->sh_size;
-    //FD_LOG_DEBUG(( "Using dynamic section (deprecated behavior) (shndx=%ld off=%lu sz=%lu)",
-    //                prog->shdr_dyn - prog->shdrs, dyn_off, dyn_sz ));
-    /* FIXME alignment check? */
-  } else {
-    /* No dynamic segment nor section
-       FIXME really fail here? */
-    FAIL();
+    ulong dyn_off = prog->phdrs[ prog->phndx_dyn ].p_offset;
+    ulong dyn_sz  = prog->phdrs[ prog->phndx_dyn ].p_filesz;
+    ulong dyn_end = dyn_off+dyn_sz;
+
+    /* Fall through to SHT_DYNAMIC if invalid */
+
+    if( FD_LIKELY(   ( dyn_end>=dyn_off )                /* overflow      */
+                   & ( dyn_end<=bin_sz  )                /* out of bounds */
+                   & fd_ulong_is_aligned( dyn_off, 8UL ) /* misaligned    */
+                   & fd_ulong_is_aligned( dyn_sz,  8UL ) /* misaligned sz */ ) ) {
+
+      prog->dyn     = (fd_elf64_dyn const *)(bin+dyn_off);
+      prog->dyn_cnt = dyn_sz / sizeof(fd_elf64_dyn);
+      return 0;
+    }
   }
 
-  ulong const dyn_end = dyn_off+dyn_sz;
+  /* Try first SHT_DYNAMIC in section header table */
 
-  REQUIRE( dyn_end>=dyn_off ); /* overflow */
-  REQUIRE( dyn_off< bin_sz  ); /* out of bounds */
-  REQUIRE( dyn_end<=bin_sz  ); /* out of bounds */
+  if( prog->shdr_dyn ) {
+    ulong dyn_off = prog->shdr_dyn->sh_offset;
+    ulong dyn_sz  = prog->shdr_dyn->sh_size;
+    ulong dyn_end = dyn_off+dyn_sz;
+
+    /* This time, don't tolerate errors */
+
+    REQUIRE( ( dyn_end>=dyn_off )                /* overflow      */
+           & ( dyn_end<=bin_sz  )                /* out of bounds */
+           & fd_ulong_is_aligned( dyn_off, 8UL ) /* misaligned    */
+           & fd_ulong_is_aligned( dyn_sz,  8UL ) /* misaligned sz */ );
+
+    prog->dyn     = (fd_elf64_dyn const *)(bin+dyn_off);
+    prog->dyn_cnt = dyn_sz / sizeof(fd_elf64_dyn);
+    return 0;
+  }
+
+  /* Missing or invalid PT_DYNAMIC and missing SHT_DYNAMIC, skip. */
+  return 0;
+}
+
+static int
+fd_sbpf_load_dynamic( fd_sbpf_elf_t * prog,
+                      uchar const *   bin,
+                      ulong           bin_sz ) {
+
+  /* Skip if no dynamic table was fonud */
+
+  if( !prog->dyn_cnt ) return 0;
 
   /* Walk dynamic table */
 
-  fd_elf64_dyn * dyns    = (fd_elf64_dyn *)(bin+dyn_off);
-  ulong const    dyn_cnt = dyn_sz/sizeof(fd_elf64_dyn);
+  fd_elf64_dyn const * dyn     = prog->dyn;
+  ulong const          dyn_cnt = prog->dyn_cnt;
 
   for( ulong i=0; i<dyn_cnt; i++ ) {
-    if( FD_UNLIKELY( dyns[i].d_tag==FD_ELF_DT_NULL ) ) break;
+    if( FD_UNLIKELY( dyn[i].d_tag==FD_ELF_DT_NULL ) ) break;
 
-    ulong d_val = dyns[i].d_un.d_val;
-    switch( dyns[i].d_tag ) {
+    ulong d_val = dyn[i].d_un.d_val;
+    switch( dyn[i].d_tag ) {
     case FD_ELF_DT_REL:    prog->dt_rel   =d_val; break;
     case FD_ELF_DT_RELENT: prog->dt_relent=d_val; break;
     case FD_ELF_DT_RELSZ:  prog->dt_relsz =d_val; break;
     case FD_ELF_DT_SYMTAB: prog->dt_symtab=d_val; break;
     }
+  }
+
+  /* Load dynamic symbol table */
+
+  if( prog->dt_symtab ) {
+    /* Search for dynamic symbol table
+       FIXME unfortunate bounded O(n^2) -- could convert to binary search */
+
+    /* FIXME this could be clobbered by relocations, causing strict
+             aliasing violations */
+
+    fd_elf64_shdr const * shdr_dynsym = NULL;
+
+    for( ulong i=0; i<prog->ehdr.e_shnum; i++ ) {
+      if( prog->shdrs[ i ].sh_addr == prog->dt_symtab ) {
+        shdr_dynsym = &prog->shdrs[ i ];
+        break;
+      }
+    }
+    REQUIRE( shdr_dynsym );
+
+    /* Check section type */
+
+    uint sh_type = shdr_dynsym->sh_type;
+    REQUIRE( (sh_type==FD_ELF_SHT_SYMTAB) | (sh_type==FD_ELF_SHT_DYNSYM) );
+
+    /* Check if out of bounds or misaligned */
+
+    ulong sh_offset = shdr_dynsym->sh_offset;
+    ulong sh_size   = shdr_dynsym->sh_size;
+
+    REQUIRE( ( sh_offset+sh_size>=sh_offset )
+           & ( sh_offset+sh_size<=bin_sz    )
+           & fd_ulong_is_aligned( sh_offset, alignof(fd_elf64_sym) ) );
+
+    prog->dynsym = (fd_elf64_sym const *)( bin+sh_offset );
+    prog->dynsym_cnt = sh_size/sizeof(fd_elf64_sym);
   }
 
   return 0;
@@ -726,7 +775,7 @@ fd_sbpf_r_bpf_64_32( fd_sbpf_elf_t *      elf,
     REQUIRE( elf->shdr_text );
     ulong sh_addr = elf->shdr_text->sh_addr;
     ulong sh_size = elf->shdr_text->sh_size;
-    REQUIRE( (S>=sh_addr) & (S<sh_size) );
+    REQUIRE( (S>=sh_addr) & (S<sh_addr+sh_size) );
 
     /* Register function call */
     ulong target_pc = (S-sh_addr) / 8UL;
@@ -738,7 +787,7 @@ fd_sbpf_r_bpf_64_32( fd_sbpf_elf_t *      elf,
     uint hash = fd_murmur3_32( &target_pc, 8UL, 0U );
     REQUIRE( fd_sbpf_calldests_upsert( elf->calldests, hash, target_pc ) );
 
-    V = (uint)target_pc;
+    V = (uint)hash;
   } else {
     /* FIXME Should cache Murmur hashes.
              If max ELF size is 10MB, can fit about 640k relocs.
@@ -804,13 +853,15 @@ fd_sbpf_hash_calls( fd_sbpf_elf_t * prog,
 
     /* Check for call instruction.  If immediate is UINT_MAX, assume
        that compiler generated a relocation instead. */
-    ulong opc  = insn & 0xFF;
-    int imm  = (int)(insn >> 32UL);
-    if( (opc!=0x85) | (imm==-1) )
+    ulong opc = insn & 0xFF;
+    int   imm = (int)(insn >> 32UL);
+    if( (opc!=FD_SBPF_OP_CALL_IMM) | (imm==-1) )
       continue;
 
     /* Mark function call destination */
-    ulong target_pc = i+1UL+imm;    /* cannot overflow */
+    long target_pc_s;
+    REQUIRE( 0==__builtin_saddl_overflow( (long)i+1L, imm, &target_pc_s ) );
+    ulong target_pc = (ulong)target_pc_s;
     REQUIRE( target_pc<insn_cnt );  /* bounds check target */
 
     /* Derive hash and insert */
@@ -914,8 +965,7 @@ fd_sbpf_make_rodata( fd_sbpf_elf_t *          elf,
   REQUIRE( shidx[ 0 ]!=INVALID_SECTION );
 
   /* Virtual address range of segment */
-  ulong segment_start = ULONG_MAX;
-  ulong segment_end   = 0UL;
+  ulong segment_end = 0UL;
 
   /* Derive segment VA range by spanning all sections */
   ulong tot_section_sz = 0UL;  /* Size of all sections */
@@ -940,8 +990,7 @@ fd_sbpf_make_rodata( fd_sbpf_elf_t *          elf,
     REQUIRE( paddr_end <= bin_sz          );
 
     /* Expand range to fit section */
-    segment_start = fd_ulong_min( segment_start, shdr->sh_addr );
-    segment_end   = fd_ulong_max( segment_end,   sh_end        );
+    segment_end = fd_ulong_max( segment_end, sh_end );
 
     /* Bounds check total section size */
     REQUIRE( tot_section_sz + sh_size >= tot_section_sz ); /* overflow check */
@@ -949,36 +998,28 @@ fd_sbpf_make_rodata( fd_sbpf_elf_t *          elf,
   }
 
   /* More coherence checks ... these should never fail */
-  REQUIRE( ro_section_cnt>0UL         );
-  REQUIRE( segment_start<=segment_end );
-  REQUIRE( segment_end  <=bin_sz      );
+  REQUIRE( ro_section_cnt>0UL    );
+  REQUIRE( segment_end  <=bin_sz );
 
   /* More overlap checks */
-  REQUIRE( segment_start+tot_section_sz >= segment_start ); /* overflow check */
-  REQUIRE( segment_start+tot_section_sz <= segment_end   ); /* overlap check  */
+  REQUIRE( tot_section_sz <= segment_end ); /* overlap check */
 
   /* Create segment */
-  uchar * rodata     = bin + segment_start;
-  ulong   rodata_off = segment_start;
-  ulong   rodata_sz  = segment_end-segment_start;
+  uchar * rodata    = bin;
+  ulong   rodata_sz = segment_end;
 
-  /* If section indices are a contiguous integer range, sections within
-     segment are already at the right offsets. */
-  int is_contiguous = (shidx[ ro_section_cnt-1UL ] - shidx[ 0 ] + 1) == ro_section_cnt;
-  if( !is_contiguous ) {
-    /* memset gaps between sections to zero.
-       Assume section sh_addrs are monotonically increasing.
-       Assume section virtual address ranges equal physical address ranges.
-       Assume ranges are not overflowing. */
-    /* FIXME match Solana more closely here */
+  /* memset gaps between sections to zero.
+      Assume section sh_addrs are monotonically increasing.
+      Assume section virtual address ranges equal physical address ranges.
+      Assume ranges are not overflowing. */
+  /* FIXME match Solana more closely here */
 
-    ulong cursor = rodata_off;
-    for( uint i=0; i<ro_section_cnt; i++ ) {
-      fd_elf64_shdr const * shdr = &shdrs[ shidx[ i ] ];
-      if( FD_UNLIKELY( shdr->sh_type == FD_ELF_SHT_NOBITS ) ) continue;
-      fd_memset( rodata+cursor, 0, shdr->sh_addr - cursor );
-      cursor = shdr->sh_addr + shdr->sh_size;
-    }
+  ulong cursor = 0UL;
+  for( uint i=0; i<ro_section_cnt; i++ ) {
+    fd_elf64_shdr const * shdr = &shdrs[ shidx[ i ] ];
+    if( FD_UNLIKELY( shdr->sh_type == FD_ELF_SHT_NOBITS ) ) continue;
+    fd_memset( rodata+cursor, 0, shdr->sh_addr - cursor );
+    cursor = shdr->sh_addr + shdr->sh_size;
   }
 
   /* Convert entrypoint offset to program counter */
@@ -991,11 +1032,10 @@ fd_sbpf_make_rodata( fd_sbpf_elf_t *          elf,
 
   /* Write info */
 
-  info->rodata     = rodata;
-  info->rodata_off = rodata_off;
-  info->rodata_sz  = rodata_sz;
+  info->rodata    = rodata;
+  info->rodata_sz = rodata_sz;
 
-  info->text     = (ulong const *)( rodata + elf->shdr_text->sh_offset - segment_start);
+  info->text     = (ulong const *)( rodata + elf->shdr_text->sh_offset );
   info->text_cnt = elf->shdr_text->sh_size / 8UL;
   info->entry_pc = entry_pc;
 
@@ -1011,7 +1051,7 @@ fd_sbpf_program_load( fd_sbpf_program_t *  prog,
   int err;
   uchar * bin = (uchar *)_bin;
 
-  fd_sbpf_program_info_t * info = fd_sbpf_program_get_info( prog );
+  fd_sbpf_program_info_t * info = (fd_sbpf_program_info_t *)prog;
   fd_sbpf_elf_t elf = { .calldests=info->calldests,
                         .syscalls =syscalls };
 
@@ -1031,7 +1071,11 @@ fd_sbpf_program_load( fd_sbpf_program_t *  prog,
   if( FD_UNLIKELY( (err=fd_sbpf_load_shdrs  ( &elf, bin, bin_sz ))!=0 ) )
     return err;
 
-  /* Dynamic section */
+  /* Find dynamic section */
+  if( FD_UNLIKELY( (err=fd_sbpf_find_dynamic( &elf, bin, bin_sz ))!=0 ) )
+    return err;
+
+  /* Load dynamic section */
   if( FD_UNLIKELY( (err=fd_sbpf_load_dynamic( &elf, bin, bin_sz ))!=0 ) )
     return err;
 
@@ -1054,4 +1098,9 @@ fd_sbpf_program_load( fd_sbpf_program_t *  prog,
 #undef ERR
 #undef FAIL
 #undef REQUIRE
+
+/* Declare extern symbol definitions for inlines */
+
+FD_FN_CONST extern inline fd_sbpf_program_info_t const *
+fd_sbpf_program_get_info( fd_sbpf_program_t const * program );
 
