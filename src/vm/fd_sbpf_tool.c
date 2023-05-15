@@ -201,7 +201,7 @@ int cmd_trace( char const * bin_path, char const * input_path ) {
         trace_ent.register_file[8],
         trace_ent.register_file[9],
         trace_ent.register_file[10],
-        trace_ent.pc+29 /* FIXME: THIS OFFSET IS FOR TESTING ONLY */
+        trace_ent.pc /* FIXME: THIS OFFSET IS FOR TESTING ONLY */
       );
     fd_sbpf_disassemble_instr(&ctx.instrs[trace[i].pc], trace[i].pc, ctx.syscall_map, ctx.local_call_map, stdout);
   
