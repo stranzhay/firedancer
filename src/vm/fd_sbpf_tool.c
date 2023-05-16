@@ -114,7 +114,7 @@ int cmd_disasm( char const * bin_path ) {
   return res;
 }
 
-static char * 
+static uchar * 
 read_input_file( char const * input_path, ulong * _input_sz ) {
   if( _input_sz==NULL ) {
     FD_LOG_ERR(( "input_sz cannot be NULL" ));
@@ -157,8 +157,8 @@ int cmd_trace( char const * bin_path, char const * input_path ) {
   fd_sbpf_tool_prog_create( &tool_prog, bin_path );
   FD_LOG_NOTICE(( "Loading sBPF program: %s", bin_path ));
   
-  uchar input_sz = 0;
-  uchar * input = read_input_file( inputh_path, &input_sz );
+  ulong input_sz = 0;
+  uchar * input = read_input_file( input_path, &input_sz );
 
   ulong trace_sz = 128 * 1024;
   ulong trace_used = 0;
@@ -173,7 +173,9 @@ int cmd_trace( char const * bin_path, char const * input_path ) {
     .syscall_map         = tool_prog.syscalls,
     .local_call_map      = tool_prog.info->calldests,
     .input               = input,
-    .input_sz            = input_sz
+    .input_sz            = input_sz,
+    .read_only           = (uchar *)fd_type_pun_const(tool_prog.info->rodata),
+    .read_only_sz        = tool_prog.info->rodata_sz
   };
 
   ctx.register_file[1] = FD_MEM_MAP_INPUT_REGION_START;
@@ -201,12 +203,15 @@ int cmd_trace( char const * bin_path, char const * input_path ) {
         trace_ent.register_file[8],
         trace_ent.register_file[9],
         trace_ent.register_file[10],
-        trace_ent.pc /* FIXME: THIS OFFSET IS FOR TESTING ONLY */
+        trace_ent.pc+29 /* FIXME: THIS OFFSET IS FOR TESTING ONLY */
       );
     fd_sbpf_disassemble_instr(&ctx.instrs[trace[i].pc], trace[i].pc, ctx.syscall_map, ctx.local_call_map, stdout);
   
     fprintf(stdout, "\n");
   }
+  fprintf(stdout, "Return value: %lu\n", ctx.register_file[0]);
+  fprintf(stdout, "Fault code: %lu\n", ctx.cond_fault);
+  fprintf(stdout, "Instruction counter: %lu\n", ctx.instruction_counter);
 
   free( trace );
 
@@ -229,7 +234,7 @@ main( int     argc,
     char const * program_file = fd_env_strip_cmdline_cstr( &argc, &argv, "--program-file", NULL, NULL );
 
     if( FD_UNLIKELY( program_file==NULL ) ) {
-      LD_LOG_ERR(( "Please specify a --program-file" ));
+      FD_LOG_ERR(( "Please specify a --program-file" ));
     }
 
     if( FD_UNLIKELY( !cmd_disasm( program_file ) ) ) {
@@ -240,14 +245,14 @@ main( int     argc,
     char const * input_file = fd_env_strip_cmdline_cstr( &argc, &argv, "--input-file", NULL, NULL );
 
     if( FD_UNLIKELY( program_file==NULL ) ) {
-      LD_LOG_ERR(( "Please specify a --program-file" ));
+      FD_LOG_ERR(( "Please specify a --program-file" ));
     }
     
     if( FD_UNLIKELY( input_file==NULL ) ) {
-      LD_LOG_ERR(( "Please specify a --input-file" ));
+      FD_LOG_ERR(( "Please specify a --input-file" ));
     }
 
-    if( FD_UNLIKELY( !cmd_trace( program_file, input_file ) ) ) {
+    if( FD_UNLIKELY( cmd_trace( program_file, input_file ) ) ) {
       FD_LOG_ERR(( "error during trace" ));
     }
   } else {

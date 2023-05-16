@@ -211,17 +211,18 @@ fd_vm_syscall_sol_log(
     FD_FN_UNUSED ulong arg2,
     FD_FN_UNUSED ulong arg3,
     FD_FN_UNUSED ulong arg4,
-    FD_FN_UNUSED ulong * ret
+    ulong * ret
 ) {
   void * msg_host_addr;
 
-  ulong translation_res = fd_vm_sbpf_interp_translate_vm_to_host(ctx, 1, msg_vm_addr, msg_len, &msg_host_addr);
+  ulong translation_res = fd_vm_sbpf_interp_translate_vm_to_host(ctx, 0, msg_vm_addr, msg_len, &msg_host_addr);
   if (translation_res != FD_VM_MEM_MAP_SUCCESS) {
     return translation_res;
   }
 
   fd_vm_log_collector_log( &ctx->log_collector, msg_host_addr, msg_len );
 
+  *ret = 0;
   return FD_VM_SYSCALL_SUCCESS;
 }
 

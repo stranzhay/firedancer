@@ -86,6 +86,7 @@ struct fd_vm_sbpf_exec_context {
   ulong                 instruction_counter;  /* The number of instructions which have been executed */
   fd_vm_log_collector_t log_collector;        /* The log collector used by `sol_log_*` syscalls */
   ulong                 compute_budget;       /* The remaining CUs left for the transaction */
+  ulong                 cond_fault;           /* If non-zero, indicates a fault occured during execution */
 
   /* Memory regions: */
   uchar *       read_only;            /* The read-only memory region, typically just the relocated program binary blob */

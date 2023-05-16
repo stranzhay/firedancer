@@ -114,7 +114,7 @@ JT_CASE_END
   pc += (register_file[dst_reg] != imm) ? instr.offset : 0;
 JT_CASE_END
 /* 0x57 */ JT_CASE(0x57) // FD_BPF_OP_AND64_IMM
-  register_file[dst_reg] &= imm;
+  register_file[dst_reg] &= (int)imm;
 JT_CASE_END
 /* 0x5c */ JT_CASE(0x5c) // FD_BPF_OP_AND_REG
   register_file[dst_reg] = (uint)((uint)register_file[dst_reg] & (uint)register_file[src_reg]);
@@ -220,7 +220,7 @@ JT_CASE_END
   register_file[dst_reg] = (uint)((uint)register_file[dst_reg] >> (uint)register_file[src_reg]);
 JT_CASE_END
 /* 0x7d */ JT_CASE(0x7d) // FD_BPF_OP_JSGE_REG
-  pc += ((long)register_file[dst_reg] > (long)register_file[src_reg]) ? instr.offset : 0;
+  pc += ((long)register_file[dst_reg] >= (long)register_file[src_reg]) ? instr.offset : 0;
 JT_CASE_END
 /* 0x7f */ JT_CASE(0x7f) // FD_BPF_OP_RSH64_REG
   register_file[dst_reg] >>= register_file[src_reg];
@@ -258,7 +258,25 @@ JT_CASE_END
 /* 0x87 */ JT_CASE(0x87) // FD_BPF_OP_NEG64
   register_file[dst_reg] = -(long)register_file[dst_reg];
 JT_CASE_END
-/* 0x8d */ JT_CASE(0x8d) // FD_BPF_OP_CALL_REG
+/* 0x8d */ JT_CASE(0x8d) { // FD_BPF_OP_CALL_REG
+  /* Check if we are in the read only region */
+  ulong call_addr = register_file[imm];
+  ulong mem_region = call_addr & FD_MEM_MAP_REGION_MASK;
+  if( mem_region==FD_MEM_MAP_PROGRAM_REGION_START ) {
+    // FIXME: check alignment
+    // FIXME: check for run into other region.
+    ulong start_addr = call_addr & FD_MEM_MAP_REGION_SZ;
+    // FIXME: DO STACK STUFF correctly: move this r10 manipulation in the fd_vm_stack_t or on success.
+    register_file[10] += 0x2000;
+    // FIXME: stack overflow fault.
+    fd_vm_stack_push( &ctx->stack, pc, &register_file[6] );
+    
+    pc = (start_addr / 8)-1;
+    //pc -= 29; /* FIXME: REMOVE */
+    printf("PC: %ld\n", pc);
+    goto fallthrough_0x8d;
+  }
+
   fd_sbpf_syscalls_t * syscall_entry_reg = fd_sbpf_syscalls_query( ctx->syscall_map, register_file[imm], NULL );
   if( syscall_entry_reg==NULL ) {
     fd_sbpf_calldests_t * calldest_entry_reg = fd_sbpf_calldests_query( ctx->local_call_map, register_file[imm], NULL );
@@ -276,6 +294,7 @@ JT_CASE_END
     cond_fault = ((fd_vm_sbpf_syscall_fn_ptr_t)( syscall_entry_reg->func_ptr ))(ctx, register_file[1], register_file[2], register_file[3], register_file[4], register_file[5], &register_file[0]);
   }
   goto *((cond_fault == 0) ? &&fallthrough_0x8d : &&JT_RET_LOC);
+}
 fallthrough_0x8d:
 JT_CASE_END
 

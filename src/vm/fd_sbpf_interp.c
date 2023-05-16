@@ -2,6 +2,7 @@
 #include "../ballet/murmur3/fd_murmur3.h"
 #include "../ballet/sbpf/fd_sbpf_maps.c"
 
+#include <stdio.h>
 
 ulong
 fd_vm_serialize_input_params( fd_vm_sbpf_exec_params_t * params,
@@ -314,6 +315,7 @@ JT_END;
 
   ctx->program_counter = (ulong) pc;
   ctx->instruction_counter = ic;
+  ctx->cond_fault = cond_fault;
 
 #include "fd_jump_tab_teardown.c"
 #undef JMP_TAB_ID
@@ -374,6 +376,7 @@ JT_END;
 
   ctx->program_counter = (ulong) pc;
   ctx->instruction_counter = ic;
+  ctx->cond_fault = cond_fault;
 
 #include "fd_jump_tab_teardown.c"
 #undef JMP_TAB_ID
