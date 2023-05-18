@@ -32,9 +32,9 @@ pub(crate) struct Configure {
 
 #[derive(Debug, Subcommand, Copy, Clone)]
 pub(crate) enum ConfigureCommand {
-    Ensure,
-    Verify,
-    Clean,
+    Init,
+    Check,
+    Fini,
 }
 
 #[derive(Debug)]
@@ -152,7 +152,7 @@ pub(crate) fn configure(command: ConfigureCommand, config: &mut Config) {
         let stage = step.name();
 
         match command {
-            ConfigureCommand::Ensure => {
+            ConfigureCommand::Init => {
                 match step.check(config) {
                     CheckResult::Err(CheckError::NotConfigured(reason)) => {
                         info!("[Configure] {stage} ... unconfigured ... {reason}")
@@ -184,7 +184,7 @@ pub(crate) fn configure(command: ConfigureCommand, config: &mut Config) {
                     CheckResult::Ok(()) => (),
                 }
             }
-            ConfigureCommand::Verify => match step.check(config) {
+            ConfigureCommand::Check => match step.check(config) {
                 CheckResult::Err(CheckError::NotConfigured(reason)) => {
                     panic!("[Configure] {stage} ... not configured ... {reason}")
                 }
@@ -193,7 +193,7 @@ pub(crate) fn configure(command: ConfigureCommand, config: &mut Config) {
                 }
                 CheckResult::Ok(()) => (),
             },
-            ConfigureCommand::Clean => (),
+            ConfigureCommand::Fini => (),
         }
     }
 
@@ -201,8 +201,8 @@ pub(crate) fn configure(command: ConfigureCommand, config: &mut Config) {
         let stage = step.name();
 
         match command {
-            ConfigureCommand::Ensure | ConfigureCommand::Verify => (),
-            ConfigureCommand::Clean => {
+            ConfigureCommand::Init | ConfigureCommand::Check => (),
+            ConfigureCommand::Fini => {
                 match step.check(config) {
                     CheckResult::Err(CheckError::NotConfigured(_)) => continue,
                     CheckResult::Err(CheckError::PartiallyConfigured(reason)) => {

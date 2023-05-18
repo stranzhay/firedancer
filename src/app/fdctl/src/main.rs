@@ -1,6 +1,7 @@
 //! Centralized location for controlling Firedancer configuration.
 mod commands;
 mod config;
+mod setns;
 
 use std::path::PathBuf;
 
@@ -35,16 +36,33 @@ enum CliCommand {
     Monitor,
 }
 
-fn main() {
-    if config::escalate_root() {
-        // Process replaced with the same one that ran as root, exit.
-        return;
+impl CliCommand {
+    fn needs_root(&self) -> bool {
+        match self {
+            CliCommand::Configure(_) => true,
+            CliCommand::Run(ref command) => command.needs_root(),
+            CliCommand::Monitor => false,
+        }
     }
+}
 
+fn main() {
     env_logger::init();
 
     let args = Cli::parse();
+    if args.command.needs_root() {
+        // If this call returns successfully, we were already root and should continue. If it doesn't
+        // return, the same binary was started as root and will do the actions for us.
+        config::escalate_root();
+    }
+
     let mut config: Config = UserConfig::load(&args.config).into_config(&args);
+
+    if config.netns.enabled {
+        // Enter network namespace from the parent binary, which runs with CAP_SYS_ADMIN so that this
+        // is possible.
+        setns::set_network_namespace(&format!("/var/run/netns/{}", &config.tiles.quic.interface));
+    }
 
     match args.command {
         CliCommand::Configure(command) => commands::configure(command.command, &mut config),

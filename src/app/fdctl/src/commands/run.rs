@@ -10,10 +10,19 @@ pub(crate) struct Run {
     clean: bool,
 
     #[arg(long)]
+    configure: bool,
+
+    #[arg(long)]
     debug: bool,
 
     #[arg(long)]
     monitor: bool,
+}
+
+impl Run {
+    pub(crate) fn needs_root(&self) -> bool {
+        self.clean || self.configure || self.debug || self.monitor
+    }
 }
 
 pub(crate) fn monitor(config: &Config) {
@@ -29,6 +38,7 @@ pub(crate) fn monitor(config: &Config) {
             .skip(2)
             .map(|x| x.split_once('=').unwrap()),
     );
+
     let mut monitor =
         Command::new(format!("{}/fd_frank_mon.bin", config.binary_dir.display()))
             .args([
@@ -51,26 +61,35 @@ pub(crate) fn monitor(config: &Config) {
 }
 
 pub(crate) fn run(args: Run, config: &mut Config) {
-    if args.clean {
-        super::configure(super::configure::ConfigureCommand::Clean, config);
+    if args.configure {
+        if args.clean {
+            super::configure(super::configure::ConfigureCommand::Fini, config);
+        }
+        super::configure(super::configure::ConfigureCommand::Init, config);
     }
-    super::configure(super::configure::ConfigureCommand::Ensure, config);
-    config.dump_to_bash();
 
-    let netns = format!("--net=/var/run/netns/{}", &config.tiles.quic.interface);
+    let vars_file = std::fs::read_to_string(&format!(
+        "{}/{}.cfg",
+        config.scratch_directory, config.name
+    ))
+    .unwrap();
+    let vars: HashMap<&str, &str> = HashMap::from_iter(
+        vars_file
+            .trim()
+            .lines()
+            .skip(2)
+            .map(|x| x.split_once('=').unwrap()),
+    );
+
     let run_binary = format!("{}/fd_frank_run.bin", config.binary_dir.display());
-    let mut run_args = vec![netns.as_ref()];
 
+    let mut run_args = vec![];
     if args.debug {
         run_args.extend(["gdb", "--args"]);
     }
-
-    let pod = format!("{}.wksp:{}", &config.name, &config.frank.pod);
-
     run_args.extend([
-        &run_binary,
         "--pod",
-        &pod,
+        &vars["POD"],
         "--cfg",
         &config.name,
         "--log-app",
@@ -82,12 +101,12 @@ pub(crate) fn run(args: Run, config: &mut Config) {
     ]);
 
     if args.debug || !args.monitor {
-        let mut child = Command::new("nsenter").args(run_args).spawn().unwrap();
+        let mut child = Command::new(&run_binary).args(run_args).spawn().unwrap();
 
         let status = child.wait().unwrap();
         assert!(status.success());
     } else {
-        let mut child = Command::new("nsenter")
+        let mut child = Command::new(&run_binary)
             .args(run_args)
             .stdout(Stdio::null())
             .stderr(Stdio::null())
@@ -98,7 +117,7 @@ pub(crate) fn run(args: Run, config: &mut Config) {
             Command::new(format!("{}/fd_frank_mon.bin", config.binary_dir.display()))
                 .args([
                     "--pod",
-                    &format!("{}.wksp:{}", &config.name, &config.frank.pod),
+                    &vars["POD"],
                     "--cfg",
                     &config.name,
                     "--log-app",
