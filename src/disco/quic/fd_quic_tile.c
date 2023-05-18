@@ -131,7 +131,7 @@ fd_tpu_stream_create( fd_quic_stream_t * stream,
   ulong   const chunk0     = ctx->chunk0;
   ulong   const wmark      = ctx->wmark;
   ulong         chunk      = ctx->chunk;
-  
+
   /* Allocate new dcache entry */
 
   chunk = fd_dcache_compact_next( chunk, FD_TPU_DCACHE_MTU, chunk0, wmark );
@@ -156,7 +156,7 @@ fd_tpu_stream_create( fd_quic_stream_t * stream,
      stream_receive, and stream_notice serially, so it is often the case that
      even if we are handling multiple new connections in one receive batch,
      the in-flight count remains zero or one. */
-  if ( ctx->inflight_streams > 0 ) {
+  if( ctx->inflight_streams > 0 ) {
     ulong ctl   = fd_frag_meta_ctl( 0, 1 /* som */, 1 /* eom */, 0 /* err */ );
     ulong tsnow = fd_frag_meta_ts_comp( fd_tickcount() );
     fd_mcache_publish( ctx->mcache, ctx->depth, *ctx->seq, 1, 0, 0, ctl, tsnow, tsnow );
@@ -225,10 +225,10 @@ fd_tpu_stream_notify( fd_quic_stream_t * stream,
   fd_quic_t *             quic    = conn->quic;
   fd_quic_tpu_ctx_t *     ctx = quic->cb.quic_ctx; /* TODO ugly */
 
-  ctx->inflight_streams -= 1;
-
-  if( FD_UNLIKELY( type!=FD_QUIC_NOTIFY_END ) )
+  if( FD_UNLIKELY( type!=FD_QUIC_NOTIFY_END ) ) {
+    ctx->inflight_streams -= 1;
     return;  /* not a successful stream close */
+  }
 
   ulong conn_id   = stream->conn->local_conn_id;
   ulong stream_id = stream->stream_id;
@@ -514,6 +514,7 @@ fd_quic_tile( fd_cnc_t *         cnc,
       ulong tspub  = fd_frag_meta_ts_comp( fd_tickcount() );
 
       fd_mcache_publish( mcache, depth, seq, sig, chunk, sz, ctl, tsorig, tspub );
+      quic_ctx.inflight_streams -= 1;
 
       /* Windup for the next iteration and accumulate diagnostics */
 

@@ -73,12 +73,13 @@ extern "C" {
 
 /// Escalate the process to root if it's not already.
 /// 
-/// Returns true if we were not root, and the process got escalated. In this case, the caller
-/// should exit and not do anything else as a new process was started in its place.
-pub(crate) fn escalate_root() -> bool {
+/// This will never return if we escalated to root, instead the process will wait for the
+/// child and exit with the same return code. If this function returns normally, we were
+/// already running as root and should do whatever logic we intended ourselves.
+pub(crate) fn escalate_root() {
     let uid = unsafe { getuid() };
     if uid == 0 {
-        return false;
+        return;
     }
 
     let mut command = Command::new("/usr/bin/sudo");
@@ -93,9 +94,7 @@ pub(crate) fn escalate_root() -> bool {
     command.args(env::args().skip(1));
 
     let status = command.spawn().unwrap().wait().unwrap();
-    assert!(status.success());
-
-    true
+    std::process::exit(status.code().unwrap_or(1));
 }
 
 fn get_uid_by_username(username: &str) -> Option<u32> {
