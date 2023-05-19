@@ -318,57 +318,6 @@ JT_END;
 }
 
 ulong
-fd_vm_sbpf_interp_instrs2( fd_vm_sbpf_exec_context_t * ctx ) {
-  long pc = ctx->entrypoint;
-  ulong ic = ctx->instruction_counter;
-  ulong * register_file = ctx->register_file;
-  fd_memset(register_file, 0, sizeof(register_file));
-
-  ulong cond_fault = 0;
-  
-  do {
-    instr
-    switch (instr.opcode.raw) {
-
-    }
-  } while(1);
-
-#define JMP_TAB_ID interp
-#define JMP_TAB_PRE_CASE_CODE
-#define JMP_TAB_POST_CASE_CODE \
-  ic++; \
-  instr = ctx->instrs[++pc]; \
-  goto *(locs[instr.opcode.raw]);
-#include "fd_jump_tab.c"
-
-  fd_vm_sbpf_instr_t instr;
-
-  static const void * locs[222] = {
-#include "fd_sbpf_interp_locs.c"
-  };
-
-  instr = ctx->instrs[pc];
-
-  goto *(locs[instr.opcode.raw]);
-
-JT_START;
-#include "fd_sbpf_interp_dispatch_tab.c"
-JT_END;
-
-  ctx->program_counter = (ulong) pc;
-  ctx->instruction_counter = ic;
-  ctx->cond_fault = cond_fault;
-
-#include "fd_jump_tab_teardown.c"
-#undef JMP_TAB_ID
-#undef JMP_TAB_PRE_CASE_CODE
-#undef JMP_TAB_POST_CASE_CODE
-
-  // FIXME: Actual errors!
-  return 0;
-}
-
-ulong
 fd_vm_sbpf_interp_instrs_trace( fd_vm_sbpf_exec_context_t * ctx,
                                 fd_vm_sbpf_trace_entry_t * trace,
                                 ulong trace_sz, ulong * trace_used ) {
