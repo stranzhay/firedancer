@@ -48,7 +48,8 @@ struct __attribute__((aligned(32UL))) fd_sbpf_program_info {
 
   /* text section within rodata segment */
   ulong const * text;
-  ulong         text_cnt;  /* instruction count */
+  ulong         text_cnt;   /* instruction count */
+  ulong         text_offset; /* instructions to offset by when making CALL_REGs */
   ulong         entry_pc;  /* entrypoint PC (at text[ entry_pc - start_pc ]) */
 
   /* Map of valid call destinations */

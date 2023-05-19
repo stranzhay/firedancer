@@ -104,6 +104,7 @@ int cmd_disasm( char const * bin_path ) {
     .instruction_counter = 0,
     .instrs              = (fd_vm_sbpf_instr_t const *)fd_type_pun_const( tool_prog.info->text ),
     .instrs_sz           = tool_prog.info->text_cnt,
+    .instrs_offset       = tool_prog.info->text_offset
   };
 
   uint res = fd_sbpf_disassemble_program( ctx.instrs, ctx.instrs_sz, tool_prog.syscalls, tool_prog.info->calldests, stdout );
@@ -170,6 +171,7 @@ int cmd_trace( char const * bin_path, char const * input_path ) {
     .instruction_counter = 0,
     .instrs              = (fd_vm_sbpf_instr_t const *)fd_type_pun_const( tool_prog.info->text ),
     .instrs_sz           = tool_prog.info->text_cnt,
+    .instrs_offset       = tool_prog.info->text_offset,
     .syscall_map         = tool_prog.syscalls,
     .local_call_map      = tool_prog.info->calldests,
     .input               = input,
@@ -181,7 +183,10 @@ int cmd_trace( char const * bin_path, char const * input_path ) {
   ctx.register_file[1] = FD_MEM_MAP_INPUT_REGION_START;
   ctx.register_file[10] = FD_MEM_MAP_STACK_REGION_START + 0x1000;
 
+  long  dt = -fd_log_wallclock();
   ulong interp_res = fd_vm_sbpf_interp_instrs_trace( &ctx, trace, trace_sz, &trace_used );
+  dt += fd_log_wallclock();
+  
   if( interp_res != 0 ) {
     return 1;
   }
@@ -209,11 +214,57 @@ int cmd_trace( char const * bin_path, char const * input_path ) {
   
     fprintf(stdout, "\n");
   }
+
   fprintf(stdout, "Return value: %lu\n", ctx.register_file[0]);
   fprintf(stdout, "Fault code: %lu\n", ctx.cond_fault);
   fprintf(stdout, "Instruction counter: %lu\n", ctx.instruction_counter);
+  fprintf(stdout, "Time: %lu\n", dt);
 
   free( trace );
+
+  return 0;
+}
+
+int cmd_run( char const * bin_path, char const * input_path ) {
+
+  fd_sbpf_tool_prog_t tool_prog;
+  fd_sbpf_tool_prog_create( &tool_prog, bin_path );
+  FD_LOG_NOTICE(( "Loading sBPF program: %s", bin_path ));
+  
+  ulong input_sz = 0;
+  uchar * input = read_input_file( input_path, &input_sz );
+
+  fd_vm_sbpf_exec_context_t ctx = {
+    .entrypoint          = (long)tool_prog.info->entry_pc,
+    .program_counter     = 0,
+    .instruction_counter = 0,
+    .instrs              = (fd_vm_sbpf_instr_t const *)fd_type_pun_const( tool_prog.info->text ),
+    .instrs_sz           = tool_prog.info->text_cnt,
+    .instrs_offset       = tool_prog.info->text_offset,
+    .syscall_map         = tool_prog.syscalls,
+    .local_call_map      = tool_prog.info->calldests,
+    .input               = input,
+    .input_sz            = input_sz,
+    .read_only           = (uchar *)fd_type_pun_const(tool_prog.info->rodata),
+    .read_only_sz        = tool_prog.info->rodata_sz
+  };
+
+  ctx.register_file[1] = FD_MEM_MAP_INPUT_REGION_START;
+  ctx.register_file[10] = FD_MEM_MAP_STACK_REGION_START + 0x1000;
+
+  long  dt = -fd_log_wallclock();
+  ulong interp_res = fd_vm_sbpf_interp_instrs( &ctx );
+  dt += fd_log_wallclock();
+  
+  if( interp_res != 0 ) {
+    return 1;
+  }
+
+  fprintf(stdout, "Return value: %lu\n", ctx.register_file[0]);
+  fprintf(stdout, "Fault code: %lu\n", ctx.cond_fault);
+  fprintf(stdout, "Instruction counter: %lu\n", ctx.instruction_counter);
+  fprintf(stdout, "Time: %lu\n", dt);
+
 
   return 0;
 }
@@ -254,6 +305,21 @@ main( int     argc,
 
     if( FD_UNLIKELY( cmd_trace( program_file, input_file ) ) ) {
       FD_LOG_ERR(( "error during trace" ));
+    }
+  } else if( !strcmp( cmd, "run" ) ) {
+    char const * program_file = fd_env_strip_cmdline_cstr( &argc, &argv, "--program-file", NULL, NULL );
+    char const * input_file = fd_env_strip_cmdline_cstr( &argc, &argv, "--input-file", NULL, NULL );
+
+    if( FD_UNLIKELY( program_file==NULL ) ) {
+      FD_LOG_ERR(( "Please specify a --program-file" ));
+    }
+    
+    if( FD_UNLIKELY( input_file==NULL ) ) {
+      FD_LOG_ERR(( "Please specify a --input-file" ));
+    }
+
+    if( FD_UNLIKELY( cmd_run( program_file, input_file ) ) ) {
+      FD_LOG_ERR(( "error during run" ));
     }
   } else {
     FD_LOG_ERR(( "unknown command: %s", cmd ));

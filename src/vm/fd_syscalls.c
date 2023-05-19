@@ -15,8 +15,8 @@ void fd_vm_syscall_register_all( fd_sbpf_syscalls_t * syscalls ) {
   fd_vm_sbpf_interp_register_syscall( syscalls, "sol_log_", fd_vm_syscall_sol_log );
   fd_vm_sbpf_interp_register_syscall( syscalls, "sol_log_64_", fd_vm_syscall_sol_log_64 );
   fd_vm_sbpf_interp_register_syscall( syscalls, "sol_log_compute_units_", fd_vm_syscall_sol_log );
-  fd_vm_sbpf_interp_register_syscall( syscalls, "sol_log_pubkey_", fd_vm_syscall_sol_log_pubkey );
-  fd_vm_sbpf_interp_register_syscall( syscalls, "sol_log_data_", fd_vm_syscall_sol_log_data );
+  fd_vm_sbpf_interp_register_syscall( syscalls, "sol_log_pubkey", fd_vm_syscall_sol_log_pubkey );
+  fd_vm_sbpf_interp_register_syscall( syscalls, "sol_log_data", fd_vm_syscall_sol_log_data );
 
   fd_vm_sbpf_interp_register_syscall( syscalls, "sol_sha256", fd_vm_syscall_sol_sha256 );
   fd_vm_sbpf_interp_register_syscall( syscalls, "sol_keccak256", fd_vm_syscall_sol_keccak256 );
@@ -34,6 +34,15 @@ void fd_vm_syscall_register_all( fd_sbpf_syscalls_t * syscalls ) {
   fd_vm_sbpf_interp_register_syscall( syscalls, "sol_set_return_data", fd_vm_syscall_sol_set_return_data );
   fd_vm_sbpf_interp_register_syscall( syscalls, "sol_get_return_data", fd_vm_syscall_sol_get_return_data );
   fd_vm_sbpf_interp_register_syscall( syscalls, "sol_get_stack_height", fd_vm_syscall_sol_get_stack_height );
+
+  fd_vm_sbpf_interp_register_syscall( syscalls, "sol_get_clock_sysvar", fd_vm_syscall_sol_get_clock_sysvar );
+  fd_vm_sbpf_interp_register_syscall( syscalls, "sol_get_epoch_schedule_sysvar", fd_vm_syscall_sol_get_epoch_schedule_sysvar );
+  fd_vm_sbpf_interp_register_syscall( syscalls, "sol_get_fees_sysvar", fd_vm_syscall_sol_get_fees_sysvar );
+  fd_vm_sbpf_interp_register_syscall( syscalls, "sol_get_rent_sysvar", fd_vm_syscall_sol_get_rent_sysvar );
+  
+  fd_vm_sbpf_interp_register_syscall( syscalls, "sol_create_program_address", fd_vm_syscall_sol_create_program_address );
+  fd_vm_sbpf_interp_register_syscall( syscalls, "sol_try_find_program_address", fd_vm_syscall_sol_try_find_program_address );
+  fd_vm_sbpf_interp_register_syscall( syscalls, "sol_get_processed_sibling_instruction", fd_vm_syscall_sol_get_processed_sibling_instruction );
 }
 
 ulong
@@ -312,9 +321,11 @@ fd_vm_syscall_sol_memcpy(
 ) {
 
   /* Check for overlap */
+  /*
   if (src_vm_addr <= (dst_vm_addr + n) && dst_vm_addr <= (src_vm_addr + n)) {
     return FD_VM_SYSCALL_ERR_MEM_OVERLAP;
   }
+  */
 
   void * dst_host_addr;
   void * src_host_addr;
@@ -331,7 +342,7 @@ fd_vm_syscall_sol_memcpy(
 
   fd_memcpy(dst_host_addr, src_host_addr, n);
 
-  *ret = dst_vm_addr;
+  *ret = 0;
 
   return FD_VM_SYSCALL_SUCCESS;
 }
@@ -539,6 +550,45 @@ fd_vm_syscall_sol_get_fees_sysvar(
 
 ulong
 fd_vm_syscall_sol_get_rent_sysvar(
+    FD_FN_UNUSED fd_vm_sbpf_exec_context_t * ctx,
+    FD_FN_UNUSED ulong arg0,
+    FD_FN_UNUSED ulong arg1,
+    FD_FN_UNUSED ulong arg2,
+    FD_FN_UNUSED ulong arg3,
+    FD_FN_UNUSED ulong arg4,
+    FD_FN_UNUSED ulong * ret
+) {
+  return FD_VM_SYSCALL_ERR_UNIMPLEMENTED;
+}
+
+ulong
+fd_vm_syscall_sol_create_program_address(
+    FD_FN_UNUSED fd_vm_sbpf_exec_context_t * ctx,
+    FD_FN_UNUSED ulong arg0,
+    FD_FN_UNUSED ulong arg1,
+    FD_FN_UNUSED ulong arg2,
+    FD_FN_UNUSED ulong arg3,
+    FD_FN_UNUSED ulong arg4,
+    FD_FN_UNUSED ulong * ret
+) {
+  return FD_VM_SYSCALL_ERR_UNIMPLEMENTED;
+}
+
+ulong
+fd_vm_syscall_sol_try_find_program_address(
+    FD_FN_UNUSED fd_vm_sbpf_exec_context_t * ctx,
+    FD_FN_UNUSED ulong arg0,
+    FD_FN_UNUSED ulong arg1,
+    FD_FN_UNUSED ulong arg2,
+    FD_FN_UNUSED ulong arg3,
+    FD_FN_UNUSED ulong arg4,
+    FD_FN_UNUSED ulong * ret
+) {
+  return FD_VM_SYSCALL_ERR_UNIMPLEMENTED;
+}
+
+ulong
+fd_vm_syscall_sol_get_processed_sibling_instruction(
     FD_FN_UNUSED fd_vm_sbpf_exec_context_t * ctx,
     FD_FN_UNUSED ulong arg0,
     FD_FN_UNUSED ulong arg1,

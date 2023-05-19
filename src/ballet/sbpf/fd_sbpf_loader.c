@@ -795,6 +795,9 @@ fd_sbpf_r_bpf_64_32( fd_sbpf_elf_t *      elf,
              which results in 640MB hash input data without caching.  */
     uint hash = fd_murmur3_32( name, name_len, 0UL );
     /* Ensure that requested syscall ID exists */
+    if( !fd_sbpf_syscalls_query( elf->syscalls, hash, NULL ) ) {
+      printf("SC: %s %x\n", name, hash);
+    }
     REQUIRE( fd_sbpf_syscalls_query( elf->syscalls, hash, NULL ) );
 
     V = hash;
@@ -1037,6 +1040,7 @@ fd_sbpf_make_rodata( fd_sbpf_elf_t *          elf,
 
   info->text     = (ulong const *)( rodata + elf->shdr_text->sh_offset );
   info->text_cnt = elf->shdr_text->sh_size / 8UL;
+  info->text_offset = elf->shdr_text->sh_offset / 8UL; 
   info->entry_pc = entry_pc;
 
 # undef INVALID_SECTION
