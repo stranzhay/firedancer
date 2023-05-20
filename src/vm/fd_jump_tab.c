@@ -36,12 +36,13 @@
     JT_BASE_LABEL(__JT_ID), \
 )
 
-#define __JT_START_IMPL(base_lbl, ret_lbl, alignment) \
+#define __JT_START_IMPL(jt_id, ret_lbl) \
+__asm__(".section " #jt_id ", x;" ); \
 goto ret_lbl;
-#define __JT_START(base_lbl, ret_lbl, alignment) __JT_START_IMPL(base_lbl, ret_lbl, alignment)
+#define __JT_START(jt_id, ret_lbl) __JT_START_IMPL(jt_id, ret_lbl)
 #define JT_START __JT_START( \
-    JT_BASE_LABEL(__JT_ID), \
-    JT_RET_LABEL(__JT_ID), \
+    __JT_ID, \
+    JT_RET_LABEL(__JT_ID) \
 )
 
 #define __JT_CASE_END_IMPL(post_case_code) \
@@ -51,11 +52,17 @@ post_case_code
   JMP_TAB_POST_CASE_CODE \
 )
 
-#define __JT_CASE_IMPL(case_lbl, pre_case_code) \
+#define __JT_CASE_IMPL(jt_id, val, case_lbl, pre_case_code) \
 case_lbl: \
+  __asm__( \
+      ".align 128;\n\t" \
+      ".section " #jt_id ", " #val ";\n\t" \
+  ); \
   pre_case_code
-#define __JT_CASE(case_lbl, pre_case_code) __JT_CASE_IMPL(case_lbl, pre_case_code)
+#define __JT_CASE(jt_id, val, case_lbl, pre_case_code) __JT_CASE_IMPL(jt_id, val, case_lbl, pre_case_code)
 #define JT_CASE(val) __JT_CASE( \
+    __JT_ID, \
+    val, \
     JT_CASE_LABEL(val, __JT_ID), \
     JMP_TAB_PRE_CASE_CODE \
 )

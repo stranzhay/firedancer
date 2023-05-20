@@ -574,6 +574,21 @@ fd_vm_syscall_sol_create_program_address(
   return FD_VM_SYSCALL_ERR_UNIMPLEMENTED;
 }
 
+/*
+ulong
+fd_vm_syscall_sol_create_program_address(
+    FD_FN_UNUSED fd_vm_sbpf_exec_context_t * ctx,
+    ulong seeds_addr,
+    ulong seeds_len,
+    ulong program_id_addr,
+    ulong new_address_addr,
+    FD_FN_UNUSED ulong arg4,
+    FD_FN_UNUSED ulong * ret
+) {
+
+}
+*/
+
 ulong
 fd_vm_syscall_sol_try_find_program_address(
     FD_FN_UNUSED fd_vm_sbpf_exec_context_t * ctx,

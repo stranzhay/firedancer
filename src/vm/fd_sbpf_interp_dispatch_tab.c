@@ -349,7 +349,7 @@ JT_CASE_END
   pc += (register_file[instr.dst_reg] <= instr.imm) ? instr.offset : 0;
 JT_CASE_END
 /* 0xb7 */ JT_CASE(0xb7) // FD_BPF_OP_MOV64_IMM
-  register_file[instr.dst_reg] = instr.imm;
+  register_file[instr.dst_reg] = (int)instr.imm;
 JT_CASE_END
 /* 0xbc */ JT_CASE(0xbc) // FD_BPF_OP_MOV_REG
   register_file[instr.dst_reg] = (uint)register_file[instr.src_reg];
