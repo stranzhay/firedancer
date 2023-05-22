@@ -37,7 +37,6 @@
 )
 
 #define __JT_START_IMPL(jt_id, ret_lbl) \
-__asm__(".section " #jt_id ", x;" ); \
 goto ret_lbl;
 #define __JT_START(jt_id, ret_lbl) __JT_START_IMPL(jt_id, ret_lbl)
 #define JT_START __JT_START( \
@@ -45,19 +44,16 @@ goto ret_lbl;
     JT_RET_LABEL(__JT_ID) \
 )
 
-#define __JT_CASE_END_IMPL(post_case_code) \
+#define __JT_CASE_END_IMPL(ret_lbl, post_case_code) \
 post_case_code
-#define __JT_CASE_END(post_case_code) __JT_CASE_END_IMPL(post_case_code)
+#define __JT_CASE_END(ret_lbl, post_case_code) __JT_CASE_END_IMPL(ret_lbl, post_case_code)
 #define JT_CASE_END __JT_CASE_END( \
+  JT_RET_LABEL(__JT_ID), \
   JMP_TAB_POST_CASE_CODE \
 )
 
 #define __JT_CASE_IMPL(jt_id, val, case_lbl, pre_case_code) \
 case_lbl: \
-  __asm__( \
-      ".align 128;\n\t" \
-      ".section " #jt_id ", " #val ";\n\t" \
-  ); \
   pre_case_code
 #define __JT_CASE(jt_id, val, case_lbl, pre_case_code) __JT_CASE_IMPL(jt_id, val, case_lbl, pre_case_code)
 #define JT_CASE(val) __JT_CASE( \
@@ -74,4 +70,5 @@ ret_lbl:
     JT_RET_LABEL(__JT_ID), \
     JT_BREAK_LABEL(__JT_ID), \
 )
+
 

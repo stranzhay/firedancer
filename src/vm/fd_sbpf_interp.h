@@ -112,7 +112,7 @@ void fd_vm_sbpf_interp_register_syscall( fd_sbpf_syscalls_t * syscalls, char con
 
 /* Runs the sBPF program from the context until completion or a fault occurs. Returns success
    or an error/fault code. */
-ulong fd_vm_sbpf_interp_instrs( fd_vm_sbpf_exec_context_t * ctx );
+ulong fd_vm_sbpf_interp_instrs( fd_vm_sbpf_exec_context_t * ctx ) __attribute__ ((nothrow)); // __attribute__ ((section (".interp")));
 ulong fd_vm_sbpf_interp_instrs_trace( fd_vm_sbpf_exec_context_t * ctx, fd_vm_sbpf_trace_entry_t * trace, ulong trace_sz, ulong * trace_used );
 
 /* Validates the sBPF program from the given context. Returns success or an error code. */

@@ -43,7 +43,6 @@ test_program_success( char *                test_case_name,
   if (expected_result != ctx.register_file[0]) {
     FD_LOG_WARNING(( "RET: %lu 0x%lx", ctx.register_file[0], ctx.register_file[0] ));
     FD_LOG_WARNING(( "PC: %lu 0x%lx", ctx.program_counter, ctx.program_counter ));
-    FD_LOG_WARNING(( "x: %lu 0x%x", ctx.program_counter, FD_BPF_OP_JLE_IMM ));
   }
   FD_TEST( ctx.register_file[0]==expected_result );
   FD_LOG_NOTICE(( "Instr counter: %lu", ctx.instruction_counter ));
