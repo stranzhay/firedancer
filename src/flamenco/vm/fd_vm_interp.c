@@ -3,6 +3,8 @@
 #include "../../ballet/murmur3/fd_murmur3.h"
 #include "../../ballet/sbpf/fd_sbpf_maps.c"
 
+#include <immintrin.h>
+
 /* Helper function for reading a uchar from VM memory. Returns success or a fault for the memory
  * access. Sets the value pointed to by `val` on success.
  */
@@ -158,20 +160,32 @@ fd_vm_interp_instrs( fd_vm_exec_context_t * ctx ) {
   ulong cond_fault = 0;
 
 #define JMP_TAB_ID interp
-#define JMP_TAB_PRE_CASE_CODE
+#define JMP_TAB_PRE_CASE_CODE 
 #define JMP_TAB_POST_CASE_CODE \
   ic++; \
   instr = ctx->instrs[++pc]; \
+  dst_reg = instr.dst_reg; \
+  src_reg = instr.src_reg; \
   goto *(locs[instr.opcode.raw]);
 #include "fd_jump_tab.c"
 
   fd_sbpf_instr_t instr;
+  ulong dst_reg;
+  ulong src_reg;
 
   static const void * locs[222] = {
 #include "fd_vm_interp_locs.c"
   };
+/*
+  for( ulong i = 0; i < 221; i++ ) {
+    FD_LOG_NOTICE(("LOC: %lu: %p %p %lx", i, locs[i], locs[i+1], (ulong)locs[i+1]-(ulong)locs[i]));
+  }
+  */
 
   instr = ctx->instrs[pc];
+  dst_reg = instr.dst_reg;
+  src_reg = instr.src_reg;
+
 
   goto *(locs[instr.opcode.raw]);
 
@@ -215,16 +229,22 @@ fd_vm_interp_instrs_trace( fd_vm_exec_context_t *       ctx,
   ic++; \
   if( ic > trace_sz ) goto JT_RET_LOC; \
   instr = ctx->instrs[++pc]; \
+  dst_reg = instr.dst_reg; \
+  src_reg = instr.src_reg; \
   goto *(locs[instr.opcode.raw]);
 #include "fd_jump_tab.c"
 
   fd_sbpf_instr_t instr;
+  ulong dst_reg;
+  ulong src_reg;
 
   static const void * locs[222] = {
 #include "fd_vm_interp_locs.c"
   };
 
   instr = ctx->instrs[pc];
+  dst_reg = instr.dst_reg;
+  src_reg = instr.src_reg;
 
   goto *(locs[instr.opcode.raw]);
 
@@ -243,3 +263,24 @@ JT_END;
   return 0;
 }
 
+extern void fd_vm_interp_asm( fd_vm_exec_context_t * ctx, long pc, ulong ic);
+
+
+ulong
+fd_vm_interp_instrs_fast( fd_vm_exec_context_t * ctx ) {
+  long pc = ctx->entrypoint;
+  ulong ic = ctx->instruction_counter;
+  ulong * register_file = ctx->register_file;
+  fd_memset(register_file, 0, sizeof(register_file));
+
+  ulong cond_fault = 0;
+
+  fd_vm_interp_asm(ctx, pc, ic);
+
+  // ctx->program_counter = (ulong) pc;
+  // ctx->instruction_counter = ic;
+  ctx->cond_fault = cond_fault;
+
+  // FIXME: Actual errors!
+  return 0;
+}

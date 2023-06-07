@@ -14,6 +14,7 @@ ulong fd_vm_interp_instrs( fd_vm_exec_context_t * ctx );
    or an error/fault code. */
 ulong fd_vm_interp_instrs_trace( fd_vm_exec_context_t * ctx, fd_vm_trace_entry_t * trace, ulong trace_sz, ulong * trace_used );
 
+ulong fd_vm_interp_instrs_fast( fd_vm_exec_context_t * ctx );
 
 FD_PROTOTYPES_END
 

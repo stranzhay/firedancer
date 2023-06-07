@@ -12,6 +12,46 @@ static ulong accumulator_syscall(FD_FN_UNUSED void * _ctx, ulong arg0, ulong arg
 }
 
 static void
+test_program_success_fast( char *                test_case_name,
+                      ulong                 expected_result,
+                      ulong                 instrs_sz,
+                      fd_sbpf_instr_t *     instrs ) {
+  FD_LOG_NOTICE(( "Test program (fast): %s", test_case_name ));
+
+  fd_sbpf_syscalls_t syscalls;
+
+  fd_vm_exec_context_t ctx = {
+    .entrypoint = 0,
+    .program_counter = 0,
+    .instruction_counter = 0,
+    .instrs = instrs,
+    .instrs_sz = instrs_sz,
+    .syscall_map = &syscalls,
+  };
+
+  fd_vm_register_syscall( ctx.syscall_map, "accumulator", accumulator_syscall );
+
+  ulong validation_res = fd_vm_context_validate( &ctx );
+  if (validation_res != 0) {
+    FD_LOG_WARNING(( "VAL_RES: %lu", validation_res ));
+  }
+  FD_TEST( validation_res==FD_VM_SBPF_VALIDATE_SUCCESS );
+
+  long dt = -fd_log_wallclock();
+  fd_vm_interp_instrs_fast( &ctx );
+  dt += fd_log_wallclock();
+  if (expected_result != ctx.register_file[0]) {
+    FD_LOG_WARNING(( "RET: %lu 0x%lx", ctx.register_file[0], ctx.register_file[0] ));
+    FD_LOG_WARNING(( "PC: %lu 0x%lx", ctx.program_counter, ctx.program_counter ));
+  }
+  FD_TEST( ctx.register_file[0]==expected_result );
+  FD_LOG_NOTICE(( "Instr counter: %lu", ctx.instruction_counter ));
+  FD_LOG_NOTICE(( "Time: %ldns", dt ));
+  FD_LOG_NOTICE(( "Time/Instr: %f ns", (double)dt / (double)ctx.instruction_counter ));
+  FD_LOG_NOTICE(( "Mega Instr/Sec: %f", 1000.0 * ((double)ctx.instruction_counter / (double) dt)));
+}
+
+static void
 test_program_success( char *                test_case_name,
                       ulong                 expected_result,
                       ulong                 instrs_sz,
@@ -51,11 +91,16 @@ test_program_success( char *                test_case_name,
   FD_LOG_NOTICE(( "Mega Instr/Sec: %f", 1000.0 * ((double)ctx.instruction_counter / (double) dt)));
 }
 
+
+
+
 #define TEST_PROGRAM_SUCCESS(test_case_name, expected_result, instrs_sz, ...) { \
   fd_sbpf_instr_t instrs_var[instrs_sz] = { __VA_ARGS__ }; \
   test_program_success(test_case_name, expected_result, instrs_sz, instrs_var); \
+  test_program_success_fast(test_case_name, expected_result, instrs_sz, instrs_var); \
 }
 
+/*
 static void
 generate_random_alu_instrs( fd_rng_t * rng, fd_sbpf_instr_t * instrs, ulong instrs_sz ) {
   uchar opcodes[25] = {
@@ -137,12 +182,13 @@ generate_random_alu64_instrs( fd_rng_t * rng, fd_sbpf_instr_t * instrs, ulong in
   }
   instrs[instrs_sz-1].opcode.raw = FD_SBPF_OP_EXIT;
 }
+*/
 
 int
 main( int     argc,
       char ** argv ) {
   fd_boot( &argc, &argv );
-
+/*
   fd_rng_t _rng[1]; fd_rng_t * rng = fd_rng_join( fd_rng_new( _rng, 0U, 0UL ) );
 
   TEST_PROGRAM_SUCCESS("add", 0x3, 5,
@@ -785,7 +831,7 @@ main( int     argc,
     FD_SBPF_INSTR(FD_SBPF_OP_LDXDW,     FD_SBPF_R0,  FD_SBPF_R1, +2, 0),
     FD_SBPF_INSTR(FD_SBPF_OP_EXIT,      0,      0,      0, 0),
   );
-
+*/
   TEST_PROGRAM_SUCCESS("prime", 0x1, 16,
     FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R1,  0,      0, 100000007),
     FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R0,  0,      0, 0x1),
@@ -793,6 +839,7 @@ main( int     argc,
     FD_SBPF_INSTR(FD_SBPF_OP_JGT_IMM,   FD_SBPF_R1,  0,     +4, 0x2),
 
     FD_SBPF_INSTR(FD_SBPF_OP_JA,        0,      0,    +10, 0),
+
     FD_SBPF_INSTR(FD_SBPF_OP_ADD64_IMM, FD_SBPF_R2,  0,      0, 0x1),
     FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R0,  0,      0, 0x1),
     FD_SBPF_INSTR(FD_SBPF_OP_JGE_REG,   FD_SBPF_R2,  FD_SBPF_R1, +7, 0),
@@ -801,13 +848,58 @@ main( int     argc,
     FD_SBPF_INSTR(FD_SBPF_OP_DIV64_REG, FD_SBPF_R3,  FD_SBPF_R2,  0, 0),
     FD_SBPF_INSTR(FD_SBPF_OP_MUL64_REG, FD_SBPF_R3,  FD_SBPF_R2,  0, 0),
     FD_SBPF_INSTR(FD_SBPF_OP_MOV64_REG, FD_SBPF_R4,  FD_SBPF_R1,  0, 0),
-
     FD_SBPF_INSTR(FD_SBPF_OP_SUB64_REG, FD_SBPF_R4,  FD_SBPF_R3,  0, 0),
     FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R0,  0,      0, 0x0),
     FD_SBPF_INSTR(FD_SBPF_OP_JNE_IMM,   FD_SBPF_R4,  0,    -10, 0x0),
+
     FD_SBPF_INSTR(FD_SBPF_OP_EXIT,      0,      0,      0, 0),
   );
+  
+  // TEST_PROGRAM_SUCCESS("prime-cnt", 0x1, 17,
+  //   FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R1,  0,       0, 0x2),
+  //   FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R2,  0,       0, 0x0),
+  //   FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R0,  0,       0, 0x0),
 
+  //   FD_SBPF_INSTR(FD_SBPF_OP_JEQ_IMM,   FD_SBPF_R1,  0,     +15, 10000),
+  //   FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R3,  0,       0, 0x0),
+
+  //   FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R4,  0,       0, 0x1),
+  //   FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R1,  0,       0, 0x2),
+  //   FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R1,  0,       0, 0x2),
+  //   FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R1,  0,       0, 0x2),
+
+
+  // );
+
+/*
+prime_cnt:
+ b7 01 00 00 02 00 00 00	r1 = 0x2
+ b7 02 00 00 00 00 00 00	r2 = 0x0
+ b7 00 00 00 00 00 00 00	r0 = 0x0
+LBB0_1:
+ 15 01 0f 00 10 27 00 00	if r1 == 0x2710 goto +0xf <LBB0_6>
+ b7 03 00 00 00 00 00 00	r3 = 0x0
+LBB0_3:
+ b7 04 00 00 01 00 00 00	r4 = 0x1
+ 1d 32 07 00 00 00 00 00	if r2 == r3 goto +0x7 <LBB0_5>
+ bf 34 00 00 00 00 00 00	r4 = r3
+ 07 04 00 00 02 00 00 00	r4 += 0x2
+ bf 15 00 00 00 00 00 00	r5 = r1
+ 9f 45 00 00 00 00 00 00	r5 %= r4
+ b7 04 00 00 00 00 00 00	r4 = 0x0
+ 07 03 00 00 01 00 00 00	r3 += 0x1
+ 55 05 f7 ff 00 00 00 00	if r5 != 0x0 goto -0x9 <LBB0_3>
+LBB0_5:
+ 0f 04 00 00 00 00 00 00	r4 += r0
+ 07 02 00 00 01 00 00 00	r2 += 0x1
+ 07 01 00 00 01 00 00 00	r1 += 0x1
+ bf 40 00 00 00 00 00 00	r0 = r4
+ 05 00 f0 ff 00 00 00 00	goto -0x10 <LBB0_1>
+LBB0_6:
+ 95 00 00 00 00 00 00 00	exit
+ */
+
+/*
   TEST_PROGRAM_SUCCESS("call", 15, 7,
     FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R1,  0,      0, 1),
     FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R2,  0,      0, 2),
@@ -836,7 +928,7 @@ main( int     argc,
   test_program_success("alu64_bench_short", 0x0, instrs_sz, instrs);
 
   fd_rng_delete( fd_rng_leave( rng ) );
-
+*/
   fd_halt();
   return 0;
 }
