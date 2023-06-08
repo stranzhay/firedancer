@@ -78,7 +78,8 @@ fn check(config: &Config) -> CheckResult {
     let expected_pages = config.shmem.workspace_page_count;
     if free_pages < expected_pages {
         return partially_configured!(
-            "expected at least {expected_pages} free {size} pages, but there are {free_pages}, run `fini` to see which processes are using them"
+            "expected at least {expected_pages} free {size} pages, but there are {free_pages}, \
+             run `fini` to see which processes are using them"
         );
     }
 
