@@ -1,25 +1,22 @@
-.set case_alignment,        128
-.set case_alignment_bits,   7
-.set case_fill,             0x90
+.set case_alignment,        64
+.set case_alignment_bits,   6
+.set case_fill,             0xF4
 
 .altmacro
 
 .macro case_pre case_num
+.set case_counter, \case_num
 .align case_alignment,case_fill
 interp_case_\case_num:
-  
+
 .endm
 
 .macro read_imm
-    movl    4(%r14), %ecx       # imm = instr.imm
+    ; movl    4(%r14), %ecx       # imm = instr.imm
 .endm
 
-.macro read_src_reg
-
-.endm
-
-.macro read_offest
-    movzwl  2(%r14), %r12d       # offset = instr.offset
+.macro read_offset
+    ; movzwl  2(%r14), %r12d       # offset = instr.offset
 .endm
 
 .macro goto_instr
@@ -31,39 +28,27 @@ hlt
 .endm
 
 .macro case_post
-    incq    %r10 # ic++
-    incq    %rsi # pc++
-    movq    24(%rdi), %r13         # ctx->instrs
-    leaq    (%r13,%rsi,8), %r14    # &ctx->instrs[i]
-
-    movzbl	(%r14), %eax	       # get opcode
-    imulq   $case_alignment, %rax
-    addq    $interp_base_lbl, %rax
-
-    movzbl  1(%r14), %r9d       # regs
-    movl    %r9d, %r8d            
-    shrq    $4, %r8               # src_reg = instr.src_reg
-    andl    $0xF, %r9d            # dst_reg = instr.dst_reg
-    jmp     *%rax
+    jmp interp_step_lbl
 .endm
 
 .macro skip_case
-    .fill case_alignment,1,case_fill
+
+.align case_alignment,case_fill
+interp_case_skip.\@:
+    .space case_alignment,case_fill
 .endm
 
 .text
 .globl	fd_vm_interp_asm
 .type	fd_vm_interp_asm,@function
 .align	32
-# Register mapping:
+# Register mapping:m
 #   Caller saved:
 #       rdi:    ctx
 #       rsi:    pc
 #       r10:    ic
 #       rcx:    imm
 #       rbx:    reg_file
-#       r6:     src_reg_val
-#       r7:     dst_reg_val
 #       r8:     src_reg
 #       r9:     dst_reg
 #       r12:    offset
@@ -99,19 +84,45 @@ fd_vm_interp_asm:
     movq    %rdi, %rbx             # ctx->register_file
     addq    $48, %rbx
 
-    movq    144(%rdi), %r10
+    movq    144(%rdi), %r10        # ic
 
-    movq    24(%rdi), %r13         # ctx->instrs
-    leaq    (%r13,%rsi,8), %r14    # &ctx->instrs[i]
-    movzbl	(%r14), %eax	       # get opcode
+    movq    24(%rdi), %r13          # ctx->instrs
+    leaq    (%r13,%rsi,8), %r14     # &ctx->instrs[i]
+
+    
+    movzbl  1(%r14), %ebp           # regs
+    movl    %ebp, %r8d            
+    shrq    $4, %r8                 # src_reg = instr.src_reg
+    andl    $0xF, %ebp              # dst_reg = instr.dst_reg
+  
+    movzbl	(%r14), %eax	        # get opcode
     shlq    $case_alignment_bits, %rax
     addq    $interp_base_lbl, %rax
 
+    movl    4(%r14), %ecx           # imm = instr.imm
+    movzwl  2(%r14), %r12d          # offset = instr.offset
+    jmp     *%rax
 
-    movzbl  1(%r14), %r9d       # regs
-    movl    %r9d, %r8d            
+
+.align case_alignment,case_fill
+interp_step_lbl:
+    incq    %r10 # ic++
+    incq    %rsi # pc++
+    movq    24(%rdi), %r13         # ctx->instrs
+    leaq    (%r13,%rsi,8), %r14    # &ctx->instrs[i]
+
+    movq	(%r14), %rax	         # get opcode
+    movzbl  1(%r14), %r9       # regs
+    movzwl  2(%r14), %r12d      # offset = instr.offset
+    movl    4(%r14), %ecx       # imm = instr.imm
+
+    movl    %r9, %r8d            
     shrq    $4, %r8               # src_reg = instr.src_reg
     andl    $0xF, %r9d            # dst_reg = instr.dst_reg
+
+    shrq
+    shlq    $case_alignment_bits, %rax
+    addq    $interp_base_lbl, %rax
     jmp     *%rax
 
 .align case_alignment,case_fill
@@ -133,10 +144,11 @@ interp_base_lbl:
 
     # FD_SBPF_OP_JA
     case_pre 0x05
-    read_offest
+    read_offset
     movswq %r12w, %rax
     addq %rax, %rsi
     case_post
+
     skip_case
 
     # FD_SBPF_OP_ADD64_IMM
@@ -156,7 +168,7 @@ interp_base_lbl:
     case_post
 
     skip_case
-    skip_case
+    skip_case 
     
     # FD_SBPF_OP_ADD64_REG
     case_pre 0x0f
@@ -219,10 +231,8 @@ interp_base_lbl:
 
     # FD_SBPF_OP_JGT_IMM
     case_pre 0x25
-    read_imm
     cmpq %rcx, (%rbx,%r9,8)
     movl $0, %eax
-    read_offest
     cmovbel %eax, %r12d
     movswq %r12w, %rax
     addq %rax, %rsi
@@ -291,7 +301,7 @@ interp_base_lbl:
     movq (%rbx,%r8,8), %rdx
     cmpq %rdx, (%rbx,%r9,8)
     movl $0, %eax
-    read_offest
+    read_offset
     cmovbl %eax, %r12d
     movswq %r12w, %rax
     addq %rax, %rsi
@@ -367,7 +377,7 @@ interp_base_lbl:
     cmpq %rcx, (%rbx,%r9,8)
     movl $0, %eax
 
-    read_offest
+    read_offset
     cmovel %eax, %r12d
     movswq %r12w, %rax
     addq %rax, %rsi
@@ -636,7 +646,6 @@ interp_base_lbl:
 
     # FD_SBPF_OP_MOV64_IMM
     case_pre 0xb7
-    read_imm
     movq %rcx, (%rbx,%r9,8)
     case_post
 
