@@ -43,6 +43,7 @@ test_program_success_fast( char *                test_case_name,
   if (expected_result != ctx.register_file[0]) {
     FD_LOG_WARNING(( "RET: %lu 0x%lx", ctx.register_file[0], ctx.register_file[0] ));
     FD_LOG_WARNING(( "PC: %lu 0x%lx", ctx.program_counter, ctx.program_counter ));
+    FD_LOG_WARNING(( "IC: %lu 0x%lx", ctx.instruction_counter, ctx.instruction_counter ));
   }
   FD_TEST( ctx.register_file[0]==expected_result );
   FD_LOG_NOTICE(( "Instr counter: %lu", ctx.instruction_counter ));
@@ -51,7 +52,7 @@ test_program_success_fast( char *                test_case_name,
   FD_LOG_NOTICE(( "Mega Instr/Sec: %f", 1000.0 * ((double)ctx.instruction_counter / (double) dt)));
 }
 
-static void
+FD_FN_UNUSED static void
 test_program_success( char *                test_case_name,
                       ulong                 expected_result,
                       ulong                 instrs_sz,
@@ -90,9 +91,6 @@ test_program_success( char *                test_case_name,
   FD_LOG_NOTICE(( "Time/Instr: %f ns", (double)dt / (double)ctx.instruction_counter ));
   FD_LOG_NOTICE(( "Mega Instr/Sec: %f", 1000.0 * ((double)ctx.instruction_counter / (double) dt)));
 }
-
-
-
 
 #define TEST_PROGRAM_SUCCESS(test_case_name, expected_result, instrs_sz, ...) { \
   fd_sbpf_instr_t instrs_var[instrs_sz] = { __VA_ARGS__ }; \
@@ -848,6 +846,7 @@ main( int     argc,
     FD_SBPF_INSTR(FD_SBPF_OP_DIV64_REG, FD_SBPF_R3,  FD_SBPF_R2,  0, 0),
     FD_SBPF_INSTR(FD_SBPF_OP_MUL64_REG, FD_SBPF_R3,  FD_SBPF_R2,  0, 0),
     FD_SBPF_INSTR(FD_SBPF_OP_MOV64_REG, FD_SBPF_R4,  FD_SBPF_R1,  0, 0),
+
     FD_SBPF_INSTR(FD_SBPF_OP_SUB64_REG, FD_SBPF_R4,  FD_SBPF_R3,  0, 0),
     FD_SBPF_INSTR(FD_SBPF_OP_MOV64_IMM, FD_SBPF_R0,  0,      0, 0x0),
     FD_SBPF_INSTR(FD_SBPF_OP_JNE_IMM,   FD_SBPF_R4,  0,    -10, 0x0),

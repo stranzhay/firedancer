@@ -1,6 +1,29 @@
-.set case_alignment,        64
-.set case_alignment_bits,   6
+#    incq    %rsi # pc++
+#    movzbl  1(%r14), %r9       # regs
+
+#    movzwl  2(%r14), %r12d      # offset = instr.offset
+#    movl    4(%r14), %ecx       # imm = instr.imm
+
+#    movl    %r9, %r8d            
+#    shrq    $4, %r8               # src_reg = instr.src_reg
+#    andl    $0xF, %r9d            # dst_reg = instr.dst_reg
+.set case_alignment,        128
+.set case_alignment_bits,   7
 .set case_fill,             0xF4
+
+#define REG_FILE    %rbx
+#define INSTR       %rdx
+#define OPCODE      %dl
+#define IC          %rdi
+#define PC          %rsi
+#define CTX         %r8
+#define INSTRS      %r9
+#define IMM         %r10d
+#define IMM64       %r10
+#define SRC_REG     %rcx
+#define DST_REG     %rax
+#define OFFSET      %r11w
+#define OFFSET64    %r11
 
 .altmacro
 
@@ -11,12 +34,33 @@ interp_case_\case_num:
 
 .endm
 
+.macro read_dst_reg
+    movzbl %dh, %eax
+    andq $15, DST_REG
+.endm
+
+.macro read_src_reg
+    movzbl %dh, %ecx
+    shrq $4, SRC_REG
+    andq $15, SRC_REG
+.endm
+
+.macro read_dst_and_src_reg
+    movzbl %dh, %ecx
+    movzbl %dh, 
+    shrq $4, SRC_REG
+    andq $15, SRC_REG
+.endm
+
 .macro read_imm
-    ; movl    4(%r14), %ecx       # imm = instr.imm
+    movq INSTR, IMM64
+    sarq $32, IMM64
 .endm
 
 .macro read_offset
-    ; movzwl  2(%r14), %r12d       # offset = instr.offset
+    movq INSTR, %r12
+    shrq $16, %r12
+    movswq %r12w, OFFSET64
 .endm
 
 .macro goto_instr
@@ -24,7 +68,7 @@ interp_case_\case_num:
 .endm
 
 .macro unimplemented_instr
-hlt
+
 .endm
 
 .macro case_post
@@ -42,19 +86,8 @@ interp_case_skip.\@:
 .globl	fd_vm_interp_asm
 .type	fd_vm_interp_asm,@function
 .align	32
-# Register mapping:m
-#   Caller saved:
-#       rdi:    ctx
-#       rsi:    pc
-#       r10:    ic
-#       rcx:    imm
-#       rbx:    reg_file
-#       r8:     src_reg
-#       r9:     dst_reg
-#       r12:    offset
-#       r13:    (scratch)
-#       r14:    instr
-#       r15:    (scratch)
+# Register mapping:
+#   See above!
 fd_vm_interp_asm:
     .cfi_startproc
     pushq %r12
@@ -81,46 +114,28 @@ fd_vm_interp_asm:
     .cfi_def_cfa_offset 56
     .cfi_offset 6, -56
 
-    movq    %rdi, %rbx             # ctx->register_file
-    addq    $48, %rbx
+    # Set up VM execution
+    movq    %rdi, CTX             # ctx = param0
+    # NOTE: PC is implicitly already in the right place (%rsi, aka param1), this may change.
 
-    movq    144(%rdi), %r10        # ic
+    movq    24(CTX), INSTRS       # ctx->instrs
+    leaq    48(CTX), REG_FILE     # ctx->register_file
 
-    movq    24(%rdi), %r13          # ctx->instrs
-    leaq    (%r13,%rsi,8), %r14     # &ctx->instrs[i]
+    movq    144(CTX), IC            # ic
 
-    
-    movzbl  1(%r14), %ebp           # regs
-    movl    %ebp, %r8d            
-    shrq    $4, %r8                 # src_reg = instr.src_reg
-    andl    $0xF, %ebp              # dst_reg = instr.dst_reg
-  
-    movzbl	(%r14), %eax	        # get opcode
-    shlq    $case_alignment_bits, %rax
-    addq    $interp_base_lbl, %rax
-
-    movl    4(%r14), %ecx           # imm = instr.imm
-    movzwl  2(%r14), %r12d          # offset = instr.offset
-    jmp     *%rax
-
+    jmp     interp_step_lbl_no_inc
 
 .align case_alignment,case_fill
 interp_step_lbl:
-    incq    %r10 # ic++
-    incq    %rsi # pc++
-    movq    24(%rdi), %r13         # ctx->instrs
-    leaq    (%r13,%rsi,8), %r14    # &ctx->instrs[i]
+    incq    IC                      # ic++
+    incq    PC                      # pc++
 
-    movq	(%r14), %rax	         # get opcode
-    movzbl  1(%r14), %r9       # regs
-    movzwl  2(%r14), %r12d      # offset = instr.offset
-    movl    4(%r14), %ecx       # imm = instr.imm
+interp_step_lbl_no_inc:
+    movq    (INSTRS,PC,8), INSTR    # instr = ctx->instrs[i]
 
-    movl    %r9, %r8d            
-    shrq    $4, %r8               # src_reg = instr.src_reg
-    andl    $0xF, %r9d            # dst_reg = instr.dst_reg
-
-    shrq
+    # get opcode
+    movzbq  OPCODE, %rax
+    
     shlq    $case_alignment_bits, %rax
     addq    $interp_base_lbl, %rax
     jmp     *%rax
@@ -137,24 +152,25 @@ interp_base_lbl:
     
     # FD_SBPF_OP_ADD_IMM
     case_pre 0x04
+    read_dst_reg
     read_imm
-    addl (%rbx,%r9,8), %ecx
-    movq %rcx, (%rbx,%r9,8)
+    addq (REG_FILE,DST_REG,8), IMM64
+    movq IMM64, (REG_FILE,DST_REG,8)
     case_post
 
     # FD_SBPF_OP_JA
     case_pre 0x05
     read_offset
-    movswq %r12w, %rax
-    addq %rax, %rsi
+    addq OFFSET64, PC
     case_post
 
     skip_case
 
     # FD_SBPF_OP_ADD64_IMM
     case_pre 0x07
+    read_dst_reg
     read_imm
-    addq %rcx, (%rbx,%r9,8)
+    addq IMM64, (REG_FILE,DST_REG,8)
     case_post
 
     skip_case
@@ -214,9 +230,11 @@ interp_base_lbl:
 
     # FD_SBPF_OP_SUB64_REG
     case_pre 0x1f
-    leaq (%rbx,%r9,8), %rdx
+    read_src_reg
+    read_dst_reg
+    leaq (REG_FILE,DST_REG,8), %rdx
     movq (%rdx), %rax
-    subq (%rbx,%r8,8), %rax
+    subq (REG_FILE,SRC_REG,8), %rax
     movq %rax, (%rdx)
     case_post
 
@@ -231,11 +249,13 @@ interp_base_lbl:
 
     # FD_SBPF_OP_JGT_IMM
     case_pre 0x25
-    cmpq %rcx, (%rbx,%r9,8)
-    movl $0, %eax
-    cmovbel %eax, %r12d
-    movswq %r12w, %rax
-    addq %rax, %rsi
+    read_dst_reg
+    read_imm
+    read_offset
+    cmpq IMM64, (REG_FILE,DST_REG,8)
+    movq $0, %rbp
+    cmovbeq %rbp, OFFSET64
+    addq OFFSET64, PC
     case_post
 
     skip_case
@@ -261,9 +281,11 @@ interp_base_lbl:
 
     # FD_SBPF_OP_MUL64_REG
     case_pre 0x2f
-    leaq (%rbx,%r9,8), %rdx
+    read_src_reg
+    read_dst_reg
+    leaq (REG_FILE,DST_REG,8), %rdx
     movq (%rdx), %rax
-    imulq (%rbx,%r8,8), %rax
+    imulq (REG_FILE,SRC_REG,8), %rax
     movq %rax, (%rdx)
     case_post
 
@@ -298,29 +320,35 @@ interp_base_lbl:
 
     # FD_BPF_OP_JGE_REG
     case_pre 0x3d
-    movq (%rbx,%r8,8), %rdx
-    cmpq %rdx, (%rbx,%r9,8)
-    movl $0, %eax
+    read_src_reg
+    read_dst_reg
+    read_imm
     read_offset
-    cmovbl %eax, %r12d
-    movswq %r12w, %rax
-    addq %rax, %rsi
+    movq (REG_FILE,SRC_REG,8), %r13
+    cmpq %r13, (REG_FILE,DST_REG,8)
+    movq $0, %rbp
+    cmovbq %rbp, OFFSET64
+    addq OFFSET64, PC
     case_post
 
     skip_case
 
     # FD_SBPF_OP_DIV64_REG
     case_pre 0x3f
-    movq    (%rbx,%r8,8), %rax # src_reg
-    movq    (%rbx,%r9,8), %r15 # dst_reg
+    read_src_reg
+    read_dst_reg
+    movq    DST_REG, %r14
+    movq    (REG_FILE,DST_REG,8), %r15 # dst_reg
+    movq    (REG_FILE,SRC_REG,8), %r12 # src_reg
     movq    $0, %rdx
     movq    $1, %r13
 
-    testq   %rax, %rax
-    cmovzq  %rdx, %rax
+    testq   %r12, %r12
+    cmovzq  %rdx, %r12
     cmovzq  %r13, %r15
-    divq    %r15
-    movq    %rax, (%rbx,%r9,8)
+    movq    %r15, %rax
+    divq    %r12
+    movq    %rax, (REG_FILE,%r14,8)
     case_post
 
     skip_case
@@ -373,14 +401,13 @@ interp_base_lbl:
 
     # FD_SBPF_OP_JNE_IMM
     case_pre 0x55
+    read_dst_reg
     read_imm
-    cmpq %rcx, (%rbx,%r9,8)
-    movl $0, %eax
-
     read_offset
-    cmovel %eax, %r12d
-    movswq %r12w, %rax
-    addq %rax, %rsi
+    cmpq IMM64, (REG_FILE,DST_REG,8)
+    movq $0, %rbp
+    cmoveq %rbp, OFFSET64
+    addq OFFSET64, PC
     case_post
 
     skip_case
@@ -446,9 +473,7 @@ interp_base_lbl:
 
     case_pre 0x6a
     unimplemented_instr
-    unimplemented_instr
     case_post
-
 
     case_pre 0x6b
     unimplemented_instr
@@ -646,7 +671,9 @@ interp_base_lbl:
 
     # FD_SBPF_OP_MOV64_IMM
     case_pre 0xb7
-    movq %rcx, (%rbx,%r9,8)
+    read_dst_reg
+    read_imm
+    movq IMM64, (REG_FILE,DST_REG,8)
     case_post
 
     skip_case
@@ -666,8 +693,10 @@ interp_base_lbl:
 
     # FD_SBPF_OP_MOV64_REG
     case_pre 0xbf
-    movq (%rbx,%r8,8), %rax
-    movq %rax, (%rbx,%r9,8)
+    read_src_reg
+    read_dst_reg
+    movq (REG_FILE,SRC_REG,8), %rbp
+    movq %rbp, (REG_FILE,DST_REG,8)
     case_post
 
     skip_case
@@ -734,7 +763,8 @@ interp_base_lbl:
     unimplemented_instr
     case_post
 interp_ret_lbl:
-    movq %r10, 144(%rdi)
+    movq PC, 136(CTX)
+    movq IC, 144(CTX)
 
     popq %rbp
     .cfi_def_cfa_offset 48
