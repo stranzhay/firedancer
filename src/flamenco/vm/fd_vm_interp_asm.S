@@ -65,15 +65,15 @@ hlt
 
 .macro case_post case_num
     incl    %edi                      # ic++
-    addl    $8,%esi                      # pc++
-
-    movq    (INSTRS,PC,1), INSTR    # instr = ctx->instrs[i]
+    addq    $8,PC                      # pc++
+    
+    movq    (PC), INSTR    # instr = ctx->instrs[i]
 
     # get opcode
     movzb   OPCODE, %eax
     
     shll    $case_alignment_bits, %eax
-    addq    $interp_base_lbl, %rax
+    addq    %r15, %rax
     jmp     *%rax
     
     .size   interp_case_\case_num, .-interp_case_\case_num
@@ -128,6 +128,9 @@ fd_vm_interp_asm:
     movq    144(CTX), IC            # ic
 
     shlq    $3, PC                  # PC *= 8
+    addq    INSTRS, PC
+
+    movq    $interp_base_lbl,   %r15
 
     jmp     interp_step_lbl_no_inc
 
@@ -136,7 +139,7 @@ interp_step_lbl:
     incq    IC                      # ic++
     incq    PC                      # pc++
 interp_step_lbl_no_inc:
-    movq    (INSTRS,PC,1), INSTR    # instr = ctx->instrs[i]
+    movq    (PC), INSTR    # instr = ctx->instrs[i]
 
     # get opcode
     movzbq  OPCODE, %rax
@@ -339,10 +342,8 @@ interp_base_lbl:
     case_pre 0x3f
     read_src_reg
     read_dst_reg
-
     xor     %eax, %eax
     movl    $1, %ebp
-
     movq    (REG_FILE,SRC_REG,8), %rdx
     testq   %rdx, %rdx
     cmovnzq (REG_FILE,DST_REG,8), %rax
