@@ -20,8 +20,8 @@
 #define INSTRS      %r9
 #define IMM         %r10d
 #define IMM64       %r10
-#define SRC_REG     %rcx
-#define DST_REG     %rax
+#define SRC_REG     %rax
+#define DST_REG     %rcx
 #define OFFSET      %r11w
 #define OFFSET64    %r11
 
@@ -35,21 +35,22 @@ interp_case_\case_num:
 .endm
 
 .macro read_dst_reg
-    movzbl %dh, %eax
+    movb %dh, %cl
     andq $15, DST_REG
 .endm
 
 .macro read_src_reg
-    movzbl %dh, %ecx
+    movzbl %dh, %eax
     shrq $4, SRC_REG
-    andq $15, SRC_REG
 .endm
 
 .macro read_dst_and_src_reg
-    movzbl %dh, %ecx
-    movzbl %dh, 
-    shrq $4, SRC_REG
-    andq $15, SRC_REG
+    read_dst_reg
+    read_src_reg
+    ; movb %dh, %cl
+    ; movb %dh, %al
+    ; shrq $4,  SRC_REG
+    ; andq $15, DST_REG
 .endm
 
 .macro read_imm
@@ -72,7 +73,17 @@ interp_case_\case_num:
 .endm
 
 .macro case_post
-    jmp interp_step_lbl
+    incq    IC                      # ic++
+    incq    PC                      # pc++
+
+    movq    (INSTRS,PC,8), INSTR    # instr = ctx->instrs[i]
+
+    # get opcode
+    movzbq  OPCODE, %rax
+    
+    shlq    $case_alignment_bits, %rax
+    addq    $interp_base_lbl, %rax
+    jmp     *%rax
 .endm
 
 .macro skip_case
@@ -230,12 +241,10 @@ interp_base_lbl:
 
     # FD_SBPF_OP_SUB64_REG
     case_pre 0x1f
-    read_src_reg
-    read_dst_reg
-    leaq (REG_FILE,DST_REG,8), %rdx
-    movq (%rdx), %rax
-    subq (REG_FILE,SRC_REG,8), %rax
-    movq %rax, (%rdx)
+    read_dst_and_src_reg
+    movq (REG_FILE,DST_REG,8), %rbp
+    subq (REG_FILE,SRC_REG,8), %rbp
+    movq %rbp, (REG_FILE,DST_REG,8)
     case_post
 
     skip_case
@@ -281,12 +290,12 @@ interp_base_lbl:
 
     # FD_SBPF_OP_MUL64_REG
     case_pre 0x2f
-    read_src_reg
     read_dst_reg
     leaq (REG_FILE,DST_REG,8), %rdx
-    movq (%rdx), %rax
-    imulq (REG_FILE,SRC_REG,8), %rax
-    movq %rax, (%rdx)
+    movq (%rdx), %rbp
+    read_src_reg
+    imulq (REG_FILE,SRC_REG,8), %rbp
+    movq %rbp, (%rdx)
     case_post
 
     skip_case
@@ -320,8 +329,7 @@ interp_base_lbl:
 
     # FD_BPF_OP_JGE_REG
     case_pre 0x3d
-    read_src_reg
-    read_dst_reg
+    read_dst_and_src_reg
     read_imm
     read_offset
     movq (REG_FILE,SRC_REG,8), %r13
@@ -335,20 +343,18 @@ interp_base_lbl:
 
     # FD_SBPF_OP_DIV64_REG
     case_pre 0x3f
-    read_src_reg
     read_dst_reg
-    movq    DST_REG, %r14
-    movq    (REG_FILE,DST_REG,8), %r15 # dst_reg
-    movq    (REG_FILE,SRC_REG,8), %r12 # src_reg
-    movq    $0, %rdx
-    movq    $1, %r13
+    read_src_reg
+    movq    $0, %rax
+    movq    $1, %rbp
 
+    movq    (REG_FILE,SRC_REG,8), %r12
     testq   %r12, %r12
-    cmovzq  %rdx, %r12
-    cmovzq  %r13, %r15
-    movq    %r15, %rax
-    divq    %r12
-    movq    %rax, (REG_FILE,%r14,8)
+    cmovnzq (REG_FILE,DST_REG,8), %rax
+    cmovnzq %r12, %rbp
+    xorq    %rdx, %rdx
+    divq    %rbp
+    movq    %rax, (REG_FILE,DST_REG,8)
     case_post
 
     skip_case
