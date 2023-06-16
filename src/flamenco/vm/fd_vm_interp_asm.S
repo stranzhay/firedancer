@@ -51,7 +51,7 @@ interp_case_\case_num:
 
 .macro read_offset
     movl %edx, %r12d
-    shrl $16, %r12d
+    shrl $13, %r12d
     movswq %r12w, OFFSET64
 .endm
 
@@ -65,18 +65,18 @@ hlt
 
 .macro case_post case_num
     incl    %edi                      # ic++
-    incl    %esi                      # pc++
+    addl    $8,%esi                      # pc++
 
-    movq    (INSTRS,PC,8), INSTR    # instr = ctx->instrs[i]
+    movq    (INSTRS,PC,1), INSTR    # instr = ctx->instrs[i]
 
     # get opcode
-    movzb  OPCODE, %eax
+    movzb   OPCODE, %eax
     
     shll    $case_alignment_bits, %eax
     addq    $interp_base_lbl, %rax
     jmp     *%rax
     
-    .size interp_case_\case_num, .-interp_case_\case_num
+    .size   interp_case_\case_num, .-interp_case_\case_num
 .endm
 
 .macro skip_case
@@ -127,15 +127,16 @@ fd_vm_interp_asm:
 
     movq    144(CTX), IC            # ic
 
+    shlq    $3, PC                  # PC *= 8
+
     jmp     interp_step_lbl_no_inc
 
 .align case_alignment,case_fill
 interp_step_lbl:
     incq    IC                      # ic++
     incq    PC                      # pc++
-
 interp_step_lbl_no_inc:
-    movq    (INSTRS,PC,8), INSTR    # instr = ctx->instrs[i]
+    movq    (INSTRS,PC,1), INSTR    # instr = ctx->instrs[i]
 
     # get opcode
     movzbq  OPCODE, %rax
@@ -763,6 +764,7 @@ interp_base_lbl:
     unimplemented_instr
     case_post 0xdd
 interp_ret_lbl:
+    shrq $3, PC
     movq PC, 136(CTX)
     movq IC, 144(CTX)
 
