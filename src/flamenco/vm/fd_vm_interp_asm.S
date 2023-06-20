@@ -14,7 +14,7 @@
 #define REG_FILE    %rbx
 #define INSTR       %rdx
 #define OPCODE      %dl
-#define IC          %rdi
+; #define IC          %rdi
 #define PC          %rsi
 #define CTX         %r8
 #define INSTRS      %r9
@@ -24,6 +24,10 @@
 #define DST_REG     %rcx
 #define OFFSET      %r11w
 #define OFFSET64    %r11
+#define BASE_PTR    %r15
+
+#define PC_BB_BEGIN 8(%rsp)
+#define IC          16(%rsp)
 
 .altmacro
 
@@ -49,14 +53,21 @@ interp_case_\case_num:
     sarq $32, IMM64
 .endm
 
-.macro read_offset
-    movl %edx, %r12d
-    shrl $13, %r12d
-    movswq %r12w, OFFSET64
+.macro jump_ic
+    movq PC_BB_BEGIN, %rdi
+    subq PC, %rdi
+    negq %rdi
+    addq %rdi, IC
 .endm
 
-.macro goto_instr
+.macro jump_start_bb
+    movq PC, PC_BB_BEGIN
+.endm
 
+.macro read_offset
+    movl %edx, %edi
+    shrl $13, %edi
+    movswq %di, OFFSET64
 .endm
 
 .macro unimplemented_instr
@@ -64,16 +75,15 @@ hlt
 .endm
 
 .macro case_post case_num
-    incl    %edi                      # ic++
+    ; incl    %edi                         # ic++
     addq    $8,PC                      # pc++
-    
-    movq    (PC), INSTR    # instr = ctx->instrs[i]
+    movq    (PC), INSTR                # instr = ctx->instrs[i]
 
     # get opcode
     movzb   OPCODE, %eax
     
     shll    $case_alignment_bits, %eax
-    addq    %r15, %rax
+    addq    BASE_PTR, %rax
     jmp     *%rax
     
     .size   interp_case_\case_num, .-interp_case_\case_num
@@ -118,6 +128,10 @@ fd_vm_interp_asm:
     .cfi_def_cfa_offset 56
     .cfi_offset 6, -56
 
+    subq    $24, %rsp
+	.cfi_def_cfa_offset 80
+
+
     # Set up VM execution
     movq    %rdi, CTX             # ctx = param0
     # NOTE: PC is implicitly already in the right place (%rsi, aka param1), this may change.
@@ -125,12 +139,14 @@ fd_vm_interp_asm:
     movq    24(CTX), INSTRS       # ctx->instrs
     leaq    48(CTX), REG_FILE     # ctx->register_file
 
-    movq    144(CTX), IC            # ic
+    movq    144(CTX), %r14            # ic
+    movq    %r14, IC
 
     shlq    $3, PC                  # PC *= 8
     addq    INSTRS, PC
+    movq    PC, PC_BB_BEGIN
 
-    movq    $interp_base_lbl,   %r15
+    movq    $interp_base_lbl,   BASE_PTR
 
     jmp     interp_step_lbl_no_inc
 
@@ -169,7 +185,9 @@ interp_base_lbl:
     # FD_SBPF_OP_JA
     case_pre 0x05
     read_offset
+    jump_ic
     addq OFFSET64, PC
+    jump_start_bb
     case_post 0x05
 
     skip_case
@@ -262,7 +280,9 @@ interp_base_lbl:
     cmpq IMM64, (REG_FILE,DST_REG,8)
     movq $0, %rbp
     cmovbeq %rbp, OFFSET64
+    jump_ic
     addq OFFSET64, PC
+    jump_start_bb
     case_post 0x25
 
     skip_case
@@ -333,7 +353,9 @@ interp_base_lbl:
     cmpq %rbp, (REG_FILE,DST_REG,8)
     movq $0, %rbp
     cmovbq %rbp, OFFSET64
+    jump_ic
     addq OFFSET64, PC
+    jump_start_bb
     case_post 0x3d
 
     skip_case
@@ -409,7 +431,9 @@ interp_base_lbl:
     cmpq IMM64, (REG_FILE,DST_REG,8)
     movq $0, %rbp
     cmoveq %rbp, OFFSET64
+    jump_ic
     addq OFFSET64, PC
+    jump_start_bb
     case_post 0x55
 
     skip_case
@@ -767,8 +791,13 @@ interp_base_lbl:
 interp_ret_lbl:
     shrq $3, PC
     movq PC, 136(CTX)
-    movq IC, 144(CTX)
 
+    shrq $3, IC
+    movq IC, %r14
+    movq %r14, 144(CTX)
+
+	addq	$24, %rsp
+    .cfi_def_cfa_offset 56
     popq %rbp
     .cfi_def_cfa_offset 48
     popq %rbx
