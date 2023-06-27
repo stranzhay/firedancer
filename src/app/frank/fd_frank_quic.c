@@ -90,14 +90,17 @@ fd_frank_quic_task( int     argc,
   fd_quic_config_t * quic_cfg = &quic->config;
   quic_cfg->role = FD_QUIC_ROLE_SERVER;
 
-  char const * cert_file = fd_pod_query_cstr( quic_cfg_pod, "cert_file", NULL );
-  if( FD_UNLIKELY( !cert_file ) ) FD_LOG_ERR(( "%s.quic_cfg.cert_file not set", cfg_path ));
-  char const * key_file  = fd_pod_query_cstr( quic_cfg_pod, "key_file",  NULL );
-  if( FD_UNLIKELY( !key_file  ) ) FD_LOG_ERR(( "%s.quic_cfg.key_file not set", cfg_path ));
+  ulong cert_sz, key_sz;
+  char const * cert_data = fd_pod_query_buf( quic_cfg_pod, "cert_data", &cert_sz );
+  if( FD_UNLIKELY( !cert_data ) ) FD_LOG_ERR(( "%s.quic_cfg.cert_data not set", cfg_path ));
+  char const * key_data  = fd_pod_query_buf( quic_cfg_pod, "key_data",  &key_sz );
+  if( FD_UNLIKELY( !key_data  ) ) FD_LOG_ERR(( "%s.quic_cfg.key_data not set", cfg_path ));
   char const * keylog_file = fd_pod_query_cstr( quic_cfg_pod, "keylog_file", NULL ); /* optional */
 
-  strncpy( quic_cfg->cert_file, cert_file, FD_QUIC_CERT_PATH_LEN );
-  strncpy( quic_cfg->key_file,  key_file,  FD_QUIC_CERT_PATH_LEN );
+  quic_cfg->cert.data    = cert_data;
+  quic_cfg->cert.data_sz = (int)cert_sz;
+  quic_cfg->key.data     = key_data;
+  quic_cfg->key.data_sz  = (int)key_sz; 
   strncpy( quic_cfg->keylog_file, keylog_file ? keylog_file : "", FD_QUIC_CERT_PATH_LEN );
 
   /* TODO read IP addresses from interface instead? */
