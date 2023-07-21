@@ -24,16 +24,14 @@ struct fd_bincode_decode_ctx {
   /* End of buffer */
   void const *   dataend;
   /* Allocator for dynamic memory */
-  fd_alloc_fun_t allocf;
-  void *         allocf_arg;
+  fd_valloc_t    valloc;
 };
 typedef struct fd_bincode_decode_ctx fd_bincode_decode_ctx_t;
 
 /* Context argument used for calling "destroy" on a structure */
 struct fd_bincode_destroy_ctx {
   /* Allocator for dynamic memory */
-  fd_free_fun_t freef;
-  void *        freef_arg;
+  fd_valloc_t valloc;
 };
 typedef struct fd_bincode_destroy_ctx fd_bincode_destroy_ctx_t;
 
@@ -314,6 +312,21 @@ fd_bincode_compact_u16_encode( ushort const *            self,
     ptr[2] = (uchar)(val>>14);
     ctx->data = ptr + 3;
     return FD_BINCODE_SUCCESS;
+  }
+}
+
+static inline ulong
+fd_bincode_compact_u16_size( ushort const * self ) {
+  ulong val = *self;
+
+  if ( val < 0x80UL ) {
+    return 1;
+  }
+  else if ( val < 0x4000UL ) {
+    return 2;
+  }
+  else {
+    return 3;
   }
 }
 
