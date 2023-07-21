@@ -28,6 +28,7 @@
    rotation. */
 
 #include "../fd_flamenco_base.h"
+#include "../stakes/fd_stakes.h"
 #include "../types/fd_types.h"
 
 /* FD_EPOCH_LEADERS_{ALIGN,FOOTPRINT} are const-friendly versions of the
