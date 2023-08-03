@@ -38,6 +38,7 @@
 FD_PROTOTYPES_BEGIN
 
 typedef struct fd_toml_value fd_toml_value_t;
+typedef struct fd_toml_table fd_toml_table_t;
 
 struct fd_toml_array {
   ulong             sz;
@@ -46,15 +47,16 @@ struct fd_toml_array {
 typedef struct fd_toml_array fd_toml_array_t;
 
 union fd_toml_value_content {
-  char *          string_value;
-  long            integer_value;
-  double          float_value;
-  ulong           boolean_value;
-  void *          offset_date_time_value;
-  void *          local_date_time_value;
-  void *          local_date_value;
-  void *          local_time_value;
-  fd_toml_array_t array_value;
+  char *            string_value;
+  long              integer_value;
+  double            float_value;
+  ulong             boolean_value;
+  void *            offset_date_time_value;
+  void *            local_date_time_value;
+  void *            local_date_value;
+  void *            local_time_value;
+  fd_toml_array_t   array_value;
+  fd_toml_table_t * table_value;
 };
 typedef union fd_toml_value_content fd_toml_value_content_t;
 
@@ -83,23 +85,22 @@ struct fd_toml_key_value_pair {
   fd_toml_value_t value;
 };
 typedef struct fd_toml_key_value_pair fd_toml_key_value_pair_t;
-typedef fd_toml_key_value_pair_t fd_toml_table_t;
 
-#define MAP_NAME              fd_toml_table
-#define MAP_T                 fd_toml_key_value_pair_t
-#define MAP_MEMOIZE           1
-#define MAP_KEY               key
-#define MAP_KEY_T             char *
-#define MAP_KEY_NULL          NULL
-#define MAP_KEY_INVAL(k)      !(k)
-#define MAP_KEY_EQUAL(k0,k1)  (strncmp( k0, k1, 1024 ) == 0)
-#define MAP_KEY_EQUAL_IS_SLOW 1
-#define MAP_HASH              hash
-#define MAP_KEY_HASH(key)     ((uint)fd_murmur3_32( key, strlen( key ), 0 ))
-#define MAP_LG_SLOT_CNT       10
-#include "../tmpl/fd_map.c"
+struct fd_toml_table {
+  fd_toml_key_value_pair_t key_value_pair;
+  fd_toml_table_t * next;
+};
+typedef struct fd_toml_table fd_toml_table_t;
 
 int fd_toml_parse( char * content, fd_toml_table_t * table );
+
+int poop( ) {
+  const char * path[4] = { "fruits", "apple", "color", 0} 
+  int x;
+
+}
+
+int fd_toml_lookup_integer(  );
 
 FD_PROTOTYPES_END
 
