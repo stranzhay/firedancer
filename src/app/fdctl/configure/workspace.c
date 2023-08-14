@@ -271,7 +271,6 @@ init( config_t * const config ) {
         break;
       case wksp_pack:
         cnc   ( pod, "cnc" );
-        ulong1( pod, "min-gap", config->layout.bank_tile_count - 1UL        );
         ulong1( pod, "depth",   config->tiles.pack.max_pending_transactions );
         break;
     }
