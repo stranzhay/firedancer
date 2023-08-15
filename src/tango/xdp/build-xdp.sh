@@ -7,6 +7,12 @@
 # which is not supported for the eBPF target -- the kernel verifier
 # provides such safety features.
 
+# bash strict mode
+set -euo pipefail
+IFS=$'\n\t'
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+cd "${SCRIPT_DIR}"
+
 clang                           \
   -std=c17                      \
   -I./opt/include               \
