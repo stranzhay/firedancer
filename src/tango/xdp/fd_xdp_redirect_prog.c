@@ -21,6 +21,7 @@
 #include "fd_xdp_redirect_prog.h"
 
 #include <linux/bpf.h>
+#include <bpf/bpf_helpers.h>
 
 
 /* TODO: Some devices only support one XSK which requires multiplexing
@@ -30,20 +31,21 @@
 
 /* Metadata ***********************************************************/
 
-char __license[] __attribute__(( section("license") )) = "Apache-2.0";
+char LICENSE[] SEC("license") = "GPL";
+//char __license[] __attribute__(( section("license") )) = "GPL";
 
 /* eBPF syscalls ******************************************************/
 
-static void *
-(* bpf_map_lookup_elem)( void *       map,
-                         void const * key)
-  = (void *)1U;
-
-static long
-(* bpf_redirect_map)( void * map,
-                      ulong  key,
-                      ulong  flags )
-  = (void *)51U;
+//static void *
+//(* bpf_map_lookup_elem)( void *       map,
+//                         void const * key)
+//  = (void *)1U;
+//
+//static long
+//(* bpf_redirect_map)( void * map,
+//                      ulong  key,
+//                      ulong  flags )
+//  = (void *)51U;
 
 /* eBPF maps **********************************************************/
 
@@ -67,6 +69,7 @@ extern uint fd_xdp_udp_dsts __attribute__((section("maps")));
    Returns an XDP action code in XDP_{PASS,REDIRECT,DROP}. */
 __attribute__(( section("xdp"), used ))
 int fd_xdp_redirect( struct xdp_md *ctx ) {
+  bpf_printk("neat\n");
 
   uchar const * data      = (uchar const*)(ulong)ctx->data;
   uchar const * data_end  = (uchar const*)(ulong)ctx->data_end;
