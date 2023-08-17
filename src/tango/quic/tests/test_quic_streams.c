@@ -19,15 +19,15 @@ my_stream_receive_cb( fd_quic_stream_t * stream,
   fd_quic_stream_spam_gen( NULL, &pkt, stream );
 
   FD_LOG_DEBUG(( "server rx stream data stream=%lu size=%lu offset=%lu",
-                 stream->stream_id, data_sz, offset ));
+        stream->stream_id, data_sz, offset ));
 
   if( FD_UNLIKELY( fin && offset+data_sz != pkt.buf_sz ) )
     FD_LOG_ERR(( "data wrong size. expected: %u, actual: %lu",
                  (uint)pkt.buf_sz, offset+data_sz ));
 
   if( FD_UNLIKELY( 0!=memcmp( data, (uchar *)pkt.buf + offset, data_sz ) ) ) {
-    FD_LOG_HEXDUMP_WARNING(( "FAIL: expected data", pkt.buf, pkt.buf_sz ));
-    FD_LOG_HEXDUMP_WARNING(( "FAIL: actual data",   data,    data_sz    ));
+    FD_LOG_HEXDUMP_WARNING(( "FAIL: expected data", payload_buf + offset, data_sz ));
+    FD_LOG_HEXDUMP_WARNING(( "FAIL: actual data",   data,                 data_sz    ));
     FD_LOG_ERR(( "received unexpected data" ));
   }
 }
