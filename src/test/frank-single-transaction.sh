@@ -24,16 +24,16 @@ EOM
 export FIREDANCER_CONFIG_TOML=${TMPDIR}/config.toml
 
 # acquire and initialize everything to build
-echo y | ./deps.sh
-git submodule init
-git submodule update
-
-# Make absolutely sure we're working with a clean build directory
-# TODO: make clean does not delete everything in the build directory
-rm -rf build
-
-# build
-./contrib/make-j
+# echo y | ./deps.sh
+# git submodule init
+# git submodule update
+# 
+# # Make absolutely sure we're working with a clean build directory
+# # TODO: make clean does not delete everything in the build directory
+# rm -rf build
+# 
+# # build
+# ./contrib/make-j
 
 # start fddev, send a single transaction, and if everything works return 0
 FDDEV=./build/native/gcc/bin/fddev

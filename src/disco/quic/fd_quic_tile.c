@@ -1,4 +1,5 @@
 #include "fd_quic.h"
+#include "../../ballet/base64/fd_base64.h"
 
 #if !FD_HAS_HOSTED
 #error "fd_quic tile requires FD_HAS_HOSTED"
@@ -491,7 +492,11 @@ fd_quic_tile( fd_cnc_t *         cnc,
       /* Parse transaction */
 
       ulong txn_t_sz = fd_txn_parse( txn, txn_sz, txn_t, &txn_parse_counters );
+      char buf[4096] = {0};
+      fd_base64_encode( msg->data, ( int ) msg->sz, buf);
+      FD_LOG_NOTICE(("LML tx: %s", buf));
       if( txn_t_sz==0 ) {
+        FD_LOG_NOTICE(("LML npublish: %s", buf));
         FD_LOG_DEBUG(( "fd_txn_parse(sz=%lu) failed", txn_sz ));
         continue; /* invalid txn (terminate conn?) */
       }
@@ -514,6 +519,7 @@ fd_quic_tile( fd_cnc_t *         cnc,
       ulong tsorig = msg->tsorig;
       ulong tspub  = fd_frag_meta_ts_comp( fd_tickcount() );
 
+      FD_LOG_NOTICE(("LML publish: %s", buf));
       fd_mcache_publish( mcache, depth, seq, sig, chunk, sz, ctl, tsorig, tspub );
       quic_ctx.inflight_streams -= 1;
 

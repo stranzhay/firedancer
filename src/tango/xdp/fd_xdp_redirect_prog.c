@@ -31,7 +31,8 @@
 
 /* Metadata ***********************************************************/
 
-char LICENSE[] SEC("license") = "GPL";
+char _license[] SEC("license") = "GPL";
+
 //char __license[] __attribute__(( section("license") )) = "GPL";
 
 /* eBPF syscalls ******************************************************/
@@ -69,8 +70,8 @@ extern uint fd_xdp_udp_dsts __attribute__((section("maps")));
    Returns an XDP action code in XDP_{PASS,REDIRECT,DROP}. */
 __attribute__(( section("xdp"), used ))
 int fd_xdp_redirect( struct xdp_md *ctx ) {
-  bpf_printk("neat\n");
-
+  char msg[] = "queue %d";
+  bpf_trace_printk(msg, sizeof(msg), ctx->rx_queue_index);
   uchar const * data      = (uchar const*)(ulong)ctx->data;
   uchar const * data_end  = (uchar const*)(ulong)ctx->data_end;
 
@@ -100,6 +101,8 @@ int fd_xdp_redirect( struct xdp_md *ctx ) {
             loading the fd_xdp_udp_dsts has src_reg==0, but it should
             be src_reg==1 */
   /* TODO: Consider using inline asm instead */
+//  if (!fd_xdp_udp_dsts) return XDP_PASS;
+
   uint * udp_value = bpf_map_lookup_elem( &fd_xdp_udp_dsts, &flow_key );
   if( !udp_value ) return XDP_PASS;
 
