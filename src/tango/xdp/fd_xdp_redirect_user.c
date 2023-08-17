@@ -328,7 +328,7 @@ fd_xdp_hook_iface( char const * app_name,
     .prog_type = BPF_PROG_TYPE_XDP,
     .insn_cnt  = (uint) ( res->bpf_sz / 8UL ),
     .insns     = (ulong)( res->bpf ),
-    .license   = (ulong)"Apache-2.0",
+    .license   = (ulong)"GPL",
     /* Verifier logs */
     .log_level = 6,
     .log_size  = EBPF_KERN_LOG_BUFSZ,
@@ -338,9 +338,9 @@ fd_xdp_hook_iface( char const * app_name,
   if( FD_UNLIKELY( prog_fd<0 ) ) {
     FD_LOG_WARNING(( "bpf(BPF_PROG_LOAD, insns=%p, insn_cnt=%lu) failed (%d-%s)",
                      (void *)res->bpf, res->bpf_sz / 8UL, errno, strerror( errno ) ));
-    if( errno==EACCES ) {
+//    if( errno==EACCES ) {
       FD_LOG_NOTICE(( "eBPF verifier log:\n%s", ebpf_kern_log ));
-    }
+//    }
     return -1;
   }
 
