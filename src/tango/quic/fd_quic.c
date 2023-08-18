@@ -4185,41 +4185,45 @@ fd_quic_conn_tx( fd_quic_t * quic, fd_quic_conn_t * conn ) {
               data_sz            -= over;
               frame.stream.length = data_sz;
 
-              /* output */
-              frame_sz = fd_quic_encode_stream_frame( payload_ptr,
-                  (ulong)( payload_end - payload_ptr ),
-                  &frame.stream );
+              /* do we still have data we can send? */
+              if( data_sz > 0u || last_byte ) {
 
-              if( FD_UNLIKELY( frame_sz == FD_QUIC_PARSE_FAIL ) ) {
-                FD_LOG_WARNING(( "%s - fd_quic_encode_stream_frame failed, but space "
-                      "should have been available", __func__ ));
-                break;
+                /* output */
+                frame_sz = fd_quic_encode_stream_frame( payload_ptr,
+                    (ulong)( payload_end - payload_ptr ),
+                    &frame.stream );
+
+                if( FD_UNLIKELY( frame_sz == FD_QUIC_PARSE_FAIL ) ) {
+                  FD_LOG_WARNING(( "%s - fd_quic_encode_stream_frame failed, but space "
+                        "should have been available", __func__ ));
+                  break;
+                }
+
+                /* move ptr up */
+                payload_ptr  += frame_sz;
+                tot_frame_sz += frame_sz;
+
+                /* copy buffered data (tx_buf) into tx data (payload_ptr) */
+                fd_quic_buffer_t * tx_buf = &stream->tx_buf;
+
+                /* load data from tx_buf into payload_ptr
+                   data_sz was already adjusted to fit
+                   this loads but does not adjust tail pointer (consume) */
+                fd_quic_buffer_load( tx_buf, stream_off, payload_ptr, data_sz );
+
+                /* adjust ptr and size */
+                payload_ptr  += data_sz;
+                tot_frame_sz += data_sz;
+
+                /* packet metadata */
+                pkt_meta->flags          |= FD_QUIC_PKT_META_FLAGS_STREAM;
+                pkt_meta->stream_id       = stream->stream_id;
+                pkt_meta->range.offset_lo = stream_off;
+                pkt_meta->range.offset_hi = stream_off + data_sz;
+                pkt_meta->expiry          = fd_ulong_min( pkt_meta->expiry, now + 3u * conn->rtt );
+
+                stream->upd_pkt_number = pkt_number;
               }
-
-              /* move ptr up */
-              payload_ptr  += frame_sz;
-              tot_frame_sz += frame_sz;
-
-              /* copy buffered data (tx_buf) into tx data (payload_ptr) */
-              fd_quic_buffer_t * tx_buf = &stream->tx_buf;
-
-              /* load data from tx_buf into payload_ptr
-                 data_sz was already adjusted to fit
-                 this loads but does not adjust tail pointer (consume) */
-              fd_quic_buffer_load( tx_buf, stream_off, payload_ptr, data_sz );
-
-              /* adjust ptr and size */
-              payload_ptr  += data_sz;
-              tot_frame_sz += data_sz;
-
-              /* packet metadata */
-              pkt_meta->flags          |= FD_QUIC_PKT_META_FLAGS_STREAM;
-              pkt_meta->stream_id       = stream->stream_id;
-              pkt_meta->range.offset_lo = stream_off;
-              pkt_meta->range.offset_hi = stream_off + data_sz;
-              pkt_meta->expiry          = fd_ulong_min( pkt_meta->expiry, now + 3u * conn->rtt );
-
-              stream->upd_pkt_number = pkt_number;
             }
           }
         }
