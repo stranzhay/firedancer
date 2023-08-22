@@ -1221,6 +1221,7 @@ fd_quic_handle_v1_initial( fd_quic_t *               quic,
           /* This allows attackers to reset non-initialize */
           conn->state  = FD_QUIC_CONN_STATE_ABORT;
           conn->reason = FD_QUIC_CONN_REASON_PROTOCOL_VIOLATION;
+          FD_LOG_WARNING(( "Protocol violation: small packet" ));
           /* FIXME Reschedule */
         }
         /* FIXME Arguably no need to inform client of misbehavior */
@@ -1870,6 +1871,7 @@ ulong fd_quic_handle_v1_retry(
 ) {
   (void)pkt;
   if ( FD_UNLIKELY ( quic->config.role == FD_QUIC_ROLE_SERVER ) ) {
+    FD_LOG_WARNING(( "Protocol violation: wrong role: server" ));
     fd_quic_conn_close( conn, FD_QUIC_CONN_REASON_PROTOCOL_VIOLATION );
     return FD_QUIC_PARSE_FAIL;
   }
@@ -3128,6 +3130,7 @@ fd_quic_service( fd_quic_t * quic ) {
          "... the connection is silently closed and its state is discarded
          when it remains idle for longer than the minimum of the
          max_idle_timeout value advertised by both endpoints." */
+      FD_LOG_WARNING(( "connection closing due to timeout" ));
       conn->state = FD_QUIC_CONN_STATE_DEAD;
       quic->metrics.conn_aborted_cnt++;
     } else {
@@ -5454,7 +5457,9 @@ fd_quic_reclaim_pkt_meta( fd_quic_conn_t *     conn,
 
       /* if they ack bytes we didn't send, that's a protocol error */
       /* TODO ensure this is the correct reason */
-      if( range.offset_hi < tx_sent ) {
+      if( range.offset_hi > tx_sent ) {
+        FD_LOG_WARNING(( "Protocol violation: acked unsent bytes" ));
+        FD_LOG_WARNING(( "offset_hi: %lu  tx_sent: %lu", range.offset_hi, tx_sent ));
         fd_quic_conn_error( conn, FD_QUIC_CONN_REASON_PROTOCOL_VIOLATION );
       } else {
         /* did they ack the first byte in the range? */
@@ -5889,7 +5894,7 @@ fd_quic_frame_handle_stream_frame(
       /* client chosen stream id must match type */
       uint stream_id_initiator = stream_id & 1u;
       if( FD_UNLIKELY( stream_id_initiator != initiator ) ) {
-        FD_LOG_WARNING(( "Peer requested invalid stream id" ));
+        FD_LOG_WARNING(( "Protocol violation: Peer requested invalid stream id" ));
         fd_quic_conn_error( context.conn, FD_QUIC_CONN_REASON_PROTOCOL_VIOLATION );
 
         /* since we're terminating the connection, don't parse more */
@@ -5991,6 +5996,7 @@ fd_quic_frame_handle_stream_frame(
     if( FD_UNLIKELY( stream->state & FD_QUIC_STREAM_STATE_RX_FIN ) ) {
       /* this stream+direction was already FIN... protocol error */
       /* TODO might be a stream error instead */
+      FD_LOG_WARNING(( "Protocol violation: already FIN" ));
       fd_quic_conn_error( context.conn, FD_QUIC_CONN_REASON_PROTOCOL_VIOLATION );
       return FD_QUIC_PARSE_FAIL;
     }
@@ -6318,6 +6324,8 @@ fd_quic_frame_handle_conn_close_0_frame(
   (void)p;
   (void)p_sz;
 
+  FD_LOG_NOTICE(( "Closing with error code: %lu", data->error_code ));
+
   fd_quic_frame_handle_conn_close_frame( vp_context );
 
   return data->reason_phrase_length;
@@ -6331,6 +6339,8 @@ fd_quic_frame_handle_conn_close_1_frame(
     ulong                          p_sz ) {
   (void)p;
   (void)p_sz;
+
+  FD_LOG_NOTICE(( "Closing with error code: %lu", data->error_code ));
 
   fd_quic_frame_handle_conn_close_frame( vp_context );
 
@@ -6355,6 +6365,7 @@ fd_quic_frame_handle_handshake_done_frame(
 
   /* servers must treat receipt of HANDSHAKE_DONE as a protocol violation */
   if( FD_UNLIKELY( conn->server ) ) {
+    FD_LOG_WARNING(( "Protocol violation: handshake done on wrong role" ));
     fd_quic_conn_error( conn, FD_QUIC_CONN_REASON_PROTOCOL_VIOLATION );
     return FD_QUIC_PARSE_FAIL;
   }
