@@ -1,4 +1,7 @@
+#define _GNU_SOURCE
 #include "fdctl.h"
+
+#include <sys/mman.h>
 
 action_t ACTIONS[ 4 ] = {
   { .name = "run",       .args = NULL,               .fn = run_cmd_fn,       .perm = run_cmd_perm },
