@@ -126,8 +126,6 @@ jobs:
       with:
         submodules: recursive
 
-    - uses: dtolnay/rust-toolchain@1.69.0
-
     - uses: ./.github/actions/deps
 
     # Initializes the CodeQL tools for scanning.
@@ -137,7 +135,7 @@ jobs:
         languages: ${{ matrix.language }}
 
     - name: Build
-      run: make -j -Otarget all rust
+      run: make -j -Otarget all
 
     - name: Perform CodeQL Analysis
       uses: github/codeql-action/analyze@v2

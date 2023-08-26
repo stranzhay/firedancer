@@ -1,10 +1,9 @@
 #include "fdctl.h"
 
-action_t ACTIONS[ 4 ] = {
+action_t ACTIONS[ 3 ] = {
   { .name = "run",       .args = NULL,               .fn = run_cmd_fn,       .perm = run_cmd_perm },
   { .name = "configure", .args = configure_cmd_args, .fn = configure_cmd_fn, .perm = configure_cmd_perm },
   { .name = "monitor",   .args = monitor_cmd_args,   .fn = monitor_cmd_fn,   .perm = monitor_cmd_perm },
-  { .name = "keygen",    .args = NULL,               .fn = keygen_cmd_fn,    .perm = NULL },
 };
 
 int
