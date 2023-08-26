@@ -1,7 +1,7 @@
 MAKEFLAGS += --no-builtin-rules
 MAKEFLAGS += --no-builtin-variables
 .SUFFIXES:
-.PHONY: all info bin rust include lib unit-test fuzz-test run-unit-test help clean distclean asm ppp show-deps lint check-lint
+.PHONY: all info bin include lib unit-test fuzz-test run-unit-test help clean distclean asm ppp show-deps lint check-lint
 .SECONDARY:
 .SECONDEXPANSION:
 
@@ -47,7 +47,6 @@ help:
 	# "make include" makes all include files for the current platform
 	# "make lib" makes all libraries for the current platform
 	# "make unit-test" makes all unit-tests for the current platform
-	# "make rust" makes all binaries for the current platform that require the Rust toolchain
 	# "make run-unit-test" runs all unit-tests for the current platform. NOTE: this will not (re)build the test executables
 	# "make help" prints this message
 	# "make clean" removes editor temp files and the current platform build
@@ -193,14 +192,14 @@ define _make-exe
 
 DEPFILES+=$(foreach obj,$(2),$(patsubst $(OBJDIR)/src/%,$(OBJDIR)/obj/%,$(OBJDIR)/$(MKPATH)$(obj).d))
 
-$(OBJDIR)/$(5)/$(1): $(foreach obj,$(2),$(patsubst $(OBJDIR)/src/%,$(OBJDIR)/obj/%,$(OBJDIR)/$(MKPATH)$(obj).o)) $(foreach lib,$(3),$(OBJDIR)/lib/lib$(lib).a)
+$(OBJDIR)/$(4)/$(1): $(foreach obj,$(2),$(patsubst $(OBJDIR)/src/%,$(OBJDIR)/obj/%,$(OBJDIR)/$(MKPATH)$(obj).o)) $(foreach lib,$(3),$(OBJDIR)/lib/lib$(lib).a)
 	#######################################################################
-	# Creating $(5) $$@ from $$^
+	# Creating $(4) $$@ from $$^
 	#######################################################################
 	$(MKDIR) $$(dir $$@) && \
 $(LD) -L$(OBJDIR)/lib $(foreach obj,$(2),$(patsubst $(OBJDIR)/src/%,$(OBJDIR)/obj/%,$(OBJDIR)/$(MKPATH)$(obj).o)) -Wl,--start-group $(foreach lib,$(3),-l$(lib)) $(LDFLAGS) -Wl,--end-group -o $$@
 
-$(4): $(OBJDIR)/$(5)/$(1)
+$(4): $(OBJDIR)/$(4)/$(1)
 
 endef
 
@@ -232,9 +231,8 @@ run-fuzz-test: $(1)_unit
 endef
 
 ifeq "$(FD_HAS_MAIN)" "1"
-make-bin       = $(eval $(call _make-exe,$(1),$(2),$(3),bin,bin))
-make-bin-rust  = $(eval $(call _make-exe,$(1),$(2),$(3),rust,bin))
-make-unit-test = $(eval $(call _make-exe,$(1),$(2),$(3),unit-test,unit-test))
+make-bin       = $(eval $(call _make-exe,$(1),$(2),$(3),bin))
+make-unit-test = $(eval $(call _make-exe,$(1),$(2),$(3),unit-test))
 fuzz-test =
 run-unit-test = $(eval $(call _run-unit-test,$(1)))
 run-fuzz-test:

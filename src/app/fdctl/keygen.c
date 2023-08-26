@@ -55,11 +55,3 @@ generate_keypair( const char * keyfile,
   if( FD_UNLIKELY( seteuid( uid ) ) ) FD_LOG_ERR(( "seteuid() failed (%i-%s)", errno, fd_io_strerror( errno ) ));
   if( FD_UNLIKELY( setegid( gid ) ) ) FD_LOG_ERR(( "setegid() failed (%i-%s)", errno, fd_io_strerror( errno ) ));
 }
-
-void
-keygen_cmd_fn( args_t *         args,
-               config_t * const config ) {
-  (void)args;
-
-  generate_keypair( config->consensus.identity_path, config );
-}

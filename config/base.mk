@@ -25,9 +25,6 @@ CAT:=cat
 LLVM_COV?=llvm-cov
 LLVM_PROFDATA?=llvm-profdata
 
-# Rust
-RUST_PROFILE=debug
-
 # lcov
 GENHTML=genhtml
 

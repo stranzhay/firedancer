@@ -82,9 +82,8 @@ expected_pages( config_t * const config, uint out[2] ) {
     }
   }
 
-  /* each tile has 6 huge pages for its stack, and then the main solana
-     labs thread, and the pid namespace parent thread also have 6 huge
-     pages each for the stack */
+  /* each tile has 6 huge pages for its stack, and then the pid
+     namespace parent thread also have 6 huge pages each for the stack */
   out[ 0 ] += ( num_tiles + 2 ) * 6;
 }
 

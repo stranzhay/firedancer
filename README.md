@@ -26,19 +26,8 @@ setup instructions.
 $ git clone --recurse-submodules https://github.com/firedancer-io/firedancer.git
 $ cd firedancer
 $ ./deps.sh
-$ make -j run
+$ make -j
 ```
-
-The `make run` target runs the `fddev dev` command. This development
-command will ensure your system is configured correctly before starting
-a Solana validator on the local machine. `fddev` will use `sudo` to make
-privileged changes to system configuration where needed.
-
-By default `fddev` will create a new chain with a genesis block, along
-with any keys needed to start the initial validator. If you wish to join
-this cluster with other validators, you can define `[rpc.entrypoints]`
-in the configuration file to point at your first validator and run
-`fddev dev` again.
 
 ## Running
 

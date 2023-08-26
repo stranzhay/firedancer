@@ -223,42 +223,6 @@ static void parse_key_value( config_t *   config,
   ENTRY_STR   ( , ,                     name                                                      );
   ENTRY_STR   ( , ,                     user                                                      );
   ENTRY_STR   ( , ,                     scratch_directory                                         );
-  ENTRY_STR   ( , ,                     dynamic_port_range                                        );
-
-  ENTRY_STR   ( ., ledger,              path                                                      );
-  ENTRY_STR   ( ., ledger,              accounts_path                                             );
-  ENTRY_UINT  ( ., ledger,              limit_size                                                );
-  ENTRY_BOOL  ( ., ledger,              bigtable_storage                                          );
-  ENTRY_VSTR  ( ., ledger,              account_indexes                                           );
-  ENTRY_VSTR  ( ., ledger,              account_index_exclude_keys                                );
-
-  ENTRY_VSTR  ( ., gossip,              entrypoints                                               );
-  ENTRY_BOOL  ( ., gossip,              port_check                                                );
-  ENTRY_USHORT( ., gossip,              port                                                      );
-  ENTRY_STR   ( ., gossip,              host                                                      );
-
-  ENTRY_STR   ( ., consensus,           identity_path                                             );
-  ENTRY_STR   ( ., consensus,           vote_account_path                                         );
-  ENTRY_BOOL  ( ., consensus,           snapshot_fetch                                            );
-  ENTRY_BOOL  ( ., consensus,           genesis_fetch                                             );
-  ENTRY_BOOL  ( ., consensus,           poh_speed_test                                            );
-  ENTRY_STR   ( ., consensus,           expected_genesis_hash                                     );
-  ENTRY_UINT  ( ., consensus,           wait_for_supermajority_at_slot                            );
-  ENTRY_STR   ( ., consensus,           expected_bank_hash                                        );
-  ENTRY_USHORT( ., consensus,           expected_shred_version                                    );
-  ENTRY_BOOL  ( ., consensus,           wait_for_vote_to_start_leader                             );
-  ENTRY_VUINT ( ., consensus,           hard_fork_at_slots                                        );
-  ENTRY_VSTR  ( ., consensus,           known_validators                                          );
-
-  ENTRY_USHORT( ., rpc,                 port                                                      );
-  ENTRY_BOOL  ( ., rpc,                 full_api                                                  );
-  ENTRY_BOOL  ( ., rpc,                 private                                                   );
-  ENTRY_BOOL  ( ., rpc,                 transaction_history                                       );
-  ENTRY_BOOL  ( ., rpc,                 extended_tx_metadata_storage                              );
-  ENTRY_BOOL  ( ., rpc,                 only_known                                                );
-  ENTRY_BOOL  ( ., rpc,                 pubsub_enable_block_subscription                          );
-  ENTRY_BOOL  ( ., rpc,                 pubsub_enable_vote_subscription                           );
-  ENTRY_BOOL  ( ., rpc,                 incremental_snapshots                                     );
 
   ENTRY_STR   ( ., layout,              affinity                                                  );
   ENTRY_UINT  ( ., layout,              verify_tile_count                                         );
@@ -672,50 +636,7 @@ config_parse( int *    pargc,
   replace( result.scratch_directory, "{user}", result.user );
   replace( result.scratch_directory, "{name}", result.name );
 
-  if( FD_UNLIKELY( strcmp( result.ledger.path, "" ) ) ) {
-    replace( result.ledger.path, "{user}", result.user );
-    replace( result.ledger.path, "{name}", result.name );
-  } else {
-    snprintf1( result.ledger.path, sizeof(result.ledger.path), "%s/ledger", result.scratch_directory );
-  }
-
-  if( FD_UNLIKELY( !strcmp( result.consensus.identity_path, "" ) ) ) {
-    snprintf1( result.consensus.identity_path,
-               sizeof(result.consensus.identity_path),
-               "%s/identity.json",
-               result.scratch_directory );
-  } else {
-    replace( result.consensus.identity_path, "{user}", result.user );
-    replace( result.consensus.identity_path, "{name}", result.name );
-  }
-
-  replace( result.consensus.vote_account_path, "{user}", result.user );
-  replace( result.consensus.vote_account_path, "{name}", result.name );
-
   result.is_live_cluster = 0;
-  for( ulong i=0; i<result.gossip.entrypoints_cnt; i++ ) {
-    if( strstr( result.gossip.entrypoints[ i ], "solana.com" ) ||
-        strstr( result.gossip.entrypoints[ i ], "pyth.network" ) ) {
-      result.is_live_cluster = 1;
-      break;
-    }
-  }
-
-  const char * live_genesis_hashes[ 6 ] = {
-    "EtWTRABZaYq6iMfeYKouRu166VU2xqa1wcaWoxPkrZBG", // devnet
-    "4uhcVJyU9pJkvQyS88uRDiswHXSCkY3zQawwpjk2NsNY", // testnet
-    "5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d", // mainnet
-    "EkCkB7RWVrgkcpariRpd3pjf7GwiCMZaMHKUpB5Na1Ve", // pythtest
-    "GLKkBUr6r72nBtGrtBPJLRqtsh8wXZanX4xfnqKnWwKq", // pythnet
-    NULL,
-  };
-
-  for( ulong i=0; live_genesis_hashes[ i ]; i++ ) {
-    if( !strcmp( result.consensus.expected_genesis_hash, live_genesis_hashes[ i ] ) ) {
-      result.is_live_cluster = 1;
-      break;
-    }
-  }
 
   if( FD_UNLIKELY( result.is_live_cluster ) )
     FD_LOG_EMERG(( "Attempted to start against a live cluster. Firedancer is not "

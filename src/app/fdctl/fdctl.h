@@ -44,7 +44,7 @@ typedef struct {
     void       (*fn  )( args_t * args, config_t * const config );
 } action_t;
 
-extern action_t ACTIONS[ 4 ];
+extern action_t ACTIONS[ 3 ];
 
 int
 main1( int     argc,
@@ -86,9 +86,5 @@ monitor_cmd_perm( args_t *         args,
 void
 monitor_cmd_fn( args_t *         args,
                 config_t * const config );
-
-void
-keygen_cmd_fn( args_t *         args,
-               config_t * const config );
 
 #endif /* HEADER_fd_src_app_fdctl_fdctl_h */

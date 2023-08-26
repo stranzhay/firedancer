@@ -21,9 +21,6 @@ workspace_pod_join( char * app_name,
                     ulong tile_idx );
 
 int
-solana_labs_main( void * args );
-
-int
 tile_main( void * _args );
 
 void
