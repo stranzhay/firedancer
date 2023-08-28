@@ -1,9 +1,11 @@
 #define _GNU_SOURCE
 #include "configure.h"
 
+#include "../../../ballet/ebpf/fd_ebpf.h"
 #include "../../../tango/xdp/fd_xdp_redirect_user.h"
 
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/stat.h>
 #include <linux/capability.h>
 #include <linux/if_link.h>
@@ -104,8 +106,33 @@ check( config_t * const config ) {
   snprintf1( xdp_path, PATH_MAX, "/sys/fs/bpf/%s/%s/xsks", config->name, config->tiles.quic.interface );
   CHECK( check_file( xdp_path,      config->uid, config->uid, S_IFREG | S_IRUSR | S_IWUSR | S_IRGRP ) );
 
-  /* todo: step into these links and make sure the interior data is
-           correct */
+  snprintf1( xdp_path, PATH_MAX, "/sys/fs/bpf/%s/udp_dsts", config->name );
+  int fd = fd_bpf_obj_get( xdp_path );
+  if( FD_UNLIKELY( fd==-1 ) ) {
+    if( FD_UNLIKELY( errno==ENOENT ) ) PARTIALLY_CONFIGURED( "`%s` does not exist", xdp_path );
+    else FD_LOG_ERR(( "open `%s` failed (%i-%s)", xdp_path, errno, fd_io_strerror( errno ) ));
+  } else {
+    ulong key = 0;
+    uint value;
+
+    /* there should never be any entry at key 0, we don't bind 0.0.0.0 or port 0 */
+    if( FD_UNLIKELY( !fd_bpf_map_lookup_elem( fd, &key, &value ) ) )
+      PARTIALLY_CONFIGURED( "udp_dsts bpf map had an entry at key zero" );
+
+    ulong first_key;
+    if( FD_UNLIKELY( fd_bpf_map_get_next_key( fd, &key, &first_key ) ) )
+      PARTIALLY_CONFIGURED( "udp_dsts bpf map had no entries" );
+
+    ulong expected = fd_xdp_udp_dst_key( config->tiles.quic.ip_addr, config->tiles.quic.listen_port );
+    if( FD_UNLIKELY( first_key != expected ) )
+      PARTIALLY_CONFIGURED( "udp_dsts bpf map had wrong port or ip address" );
+  }
+
+  if( FD_UNLIKELY( close( fd ) ) ) FD_LOG_ERR(( "close failed (%i-%s)", errno, fd_io_strerror( errno ) ));
+
+  /* todo: use netlink to check that the program is bound to expected interfaces,
+           and that the hash matches. */
+
   CONFIGURE_OK();
 }
 
