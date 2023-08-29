@@ -49,13 +49,13 @@ fn main() {
         // isn't possible now.
         println!("cargo:rerun-if-changed=../../../src/util");
         println!("cargo:rerun-if-changed=../../../src/ballet");
-        println!("cargo:rerun-if-changed=../../../src/tango");
-        println!("cargo:rerun-if-changed=../../../src/disco");
+        // println!("cargo:rerun-if-changed=../../../src/tango");
+        // println!("cargo:rerun-if-changed=../../../src/disco");
 
         "../../../"
     };
 
-    for lib in ["util", "ballet", "tango", "disco"] {
+    for lib in ["util", "ballet"] {
         // Generate bindings to the header files
         let mut builder = bindgen::Builder::default()
             .wrap_static_fns(true)
@@ -206,8 +206,8 @@ fn main() {
             .expect("failed to convert path to string")
     );
     println!("cargo:rustc-link-lib=static=fd_util");
-    println!("cargo:rustc-link-lib=static=fd_tango");
-    println!("cargo:rustc-link-lib=static=fd_disco");
+    // println!("cargo:rustc-link-lib=static=fd_tango");
+    // println!("cargo:rustc-link-lib=static=fd_disco");
     println!("cargo:rustc-link-lib=static=fd_ballet");
     println!("cargo:rustc-link-lib=stdc++");
 }
