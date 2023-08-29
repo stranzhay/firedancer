@@ -14,6 +14,7 @@
 #if FD_IO_STYLE==0 /* POSIX style */
 
 #include <errno.h>
+#include <signal.h>
 #include <unistd.h>
 
 int
@@ -286,6 +287,9 @@ fd_io_buffered_skip( int     fd,
         }
 
         if( !err ) err = EPROTO; /* cmov, paranoia for non-conform to provide strong guarantees to caller */
+
+        *_rbuf_lo    = 0UL;
+        *_rbuf_ready = 0UL;
         return err;
       }
 
@@ -405,6 +409,145 @@ fd_io_buffered_write( int          fd,
   fd_memcpy( wbuf, src, src_sz );
   *_wbuf_used = src_sz;
   return 0;
+}
+
+char const *
+fd_io_strerror( int err ) {
+
+  /* This covers the standard POSIX-2008 errnos.  We handle the POSIX
+     glitches around EWOULDBLOCK / EAGAIN and EOPNOTSUPP / ENOTSUP so
+     this will build fine regardlesss of whether these map to the same
+     or different error codes (they typically map to the same nowadays).
+     We also throw in negative values for EOF as that is how the above
+     handles such. */
+
+  if( err<0 ) return "end-of-file";
+
+  if( err==EWOULDBLOCK ) err = EAGAIN;  /* cmov / no-op */
+  if( err==EOPNOTSUPP  ) err = ENOTSUP; /* cmov / no-op */
+
+  switch( err ) {
+  case 0              : return "success";
+  case E2BIG          : return "E2BIG-argument list too long";
+  case EACCES         : return "EACCES-permission denied";
+  case EADDRINUSE     : return "EADDRINUSE-address already in use";
+  case EADDRNOTAVAIL  : return "EADDRNOTAVAIL-cannot assign requested address";
+  case EAFNOSUPPORT   : return "EAFNOSUPPORT-address family not supported by protocol";
+  case EAGAIN         : return "EAGAIN-resource temporarily unavailable";
+  case EALREADY       : return "EALREADY-operation already in progress";
+  case EBADF          : return "EBADF-bad file descriptor";
+  case EBADMSG        : return "EBADMSG-bad message";
+  case EBUSY          : return "EBUSY-device or resource busy";
+  case ECANCELED      : return "ECANCELED-operation canceled";
+  case ECHILD         : return "ECHILD-no child processes";
+  case ECONNABORTED   : return "ECONNABORTED-software caused connection abort";
+  case ECONNREFUSED   : return "ECONNREFUSED-connection refused";
+  case ECONNRESET     : return "ECONNRESET-connection reset by peer";
+  case EDEADLK        : return "EDEADLK-resource deadlock avoided";
+  case EDESTADDRREQ   : return "EDESTADDRREQ-destination address required";
+  case EDOM           : return "EDOM-numerical argument out of domain";
+  case EEXIST         : return "EEXIST-file exists";
+  case EFAULT         : return "EFAULT-bad address";
+  case EFBIG          : return "EFBIG-file too large";
+  case EHOSTUNREACH   : return "EHOSTUNREACH-no route to host";
+  case EIDRM          : return "EIDRM-identifier removed";
+  case EILSEQ         : return "EILSEQ-invalid or incomplete multibyte or wide character";
+  case EINPROGRESS    : return "EINPROGRESS-operation now in progress";
+  case EINTR          : return "EINTR-interrupted system call";
+  case EINVAL         : return "EINVAL-invalid argument";
+  case EIO            : return "EIO-input/output error";
+  case EISCONN        : return "EISCONN-transport endpoint is already connected";
+  case EISDIR         : return "EISDIR-is a directory";
+  case ELOOP          : return "ELOOP-too many levels of symbolic links";
+  case EMFILE         : return "EMFILE-too many open files";
+  case EMLINK         : return "EMLINK-too many links";
+  case EMSGSIZE       : return "EMSGSIZE-message too long";
+  case ENAMETOOLONG   : return "ENAMETOOLONG-file name too long";
+  case ENETDOWN       : return "ENETDOWN-network is down";
+  case ENETRESET      : return "ENETRESET-network dropped connection on reset";
+  case ENETUNREACH    : return "ENETUNREACH-network is unreachable";
+  case ENFILE         : return "ENFILE-too many open files in system";
+  case ENOBUFS        : return "ENOBUFS-no buffer space available";
+  case ENODEV         : return "ENODEV-no such device";
+  case ENOENT         : return "ENOENT-no such file or directory";
+  case ENOEXEC        : return "ENOEXEC-exec format error";
+  case ENOLCK         : return "ENOLCK-no locks available";
+  case ENOMEM         : return "ENOMEM-cannot allocate memory";
+  case ENOMSG         : return "ENOMSG-no message of desired type";
+  case ENOPROTOOPT    : return "ENOPROTOOPT-protocol not available";
+  case ENOSPC         : return "ENOSPC-no space left on device";
+  case ENOSYS         : return "ENOSYS-function not implemented";
+  case ENOTCONN       : return "ENOTCONN-transport endpoint is not connected";
+  case ENOTDIR        : return "ENOTDIR-not a directory";
+  case ENOTEMPTY      : return "ENOTEMPTY-directory not empty";
+  case ENOTRECOVERABLE: return "ENOTRECOVERABLE-state not recoverable";
+  case ENOTSOCK       : return "ENOTSOCK-socket operation on non-socket";
+  case ENOTSUP        : return "ENOTSUP-operation not supported";
+  case ENOTTY         : return "ENOTTY-inappropriate ioctl for device";
+  case ENXIO          : return "ENXIO-no such device or address";
+  case EOVERFLOW      : return "EOVERFLOW-value too large for defined data type";
+  case EOWNERDEAD     : return "EOWNERDEAD-owner died";
+  case EPERM          : return "EPERM-operation not permitted";
+  case EPIPE          : return "EPIPE-broken pipe";
+  case EPROTONOSUPPORT: return "EPROTONOSUPPORT-protocol not supported";
+  case EPROTO         : return "EPROTO-protocol error";
+  case EPROTOTYPE     : return "EPROTOTYPE-protocol wrong type for socket";
+  case ERANGE         : return "ERANGE-numerical result out of range";
+  case EROFS          : return "EROFS-read-only file system";
+  case ESPIPE         : return "ESPIPE-illegal seek";
+  case ESRCH          : return "ESRCH-no such process";
+  case ETIMEDOUT      : return "ETIMEDOUT-connection timed out";
+  case ETXTBSY        : return "ETXTBSY-text file busy";
+  case EXDEV          : return "EXDEV-invalid cross-device link";
+  default: break;
+  }
+
+  return "unknown";
+}
+
+char const *
+fd_io_strsignal( int sig ) {
+  switch( sig ) {
+  case 0              : return "success";
+  case SIGHUP         : return "SIGHUP-Hangup";
+  case SIGINT         : return "SIGINT-Interrupt";
+  case SIGQUIT        : return "SIGQUIT-Quit";
+  case SIGILL         : return "SIGILL-Illegal instruction";
+  case SIGTRAP        : return "SIGTRAP-Trace/breakpoint trap";
+  case SIGABRT        : return "SIGABRT-Aborted";
+  case SIGBUS         : return "SIGBUS-Bus error";
+  case SIGFPE         : return "SIGFPE-Arithmetic exception";
+  case SIGKILL        : return "SIGKILL-Killed";
+  case SIGUSR1        : return "SIGUSR1-User defined signal 1";
+  case SIGSEGV        : return "SIGSEGV-Segmentation fault";
+  case SIGUSR2        : return "SIGUSR2-User defined signal 2";
+  case SIGPIPE        : return "SIGPIPE-Broken pipe";
+  case SIGALRM        : return "SIGALRM-Alarm clock";
+  case SIGTERM        : return "SIGTERM-Terminated";
+#if defined(SIGSTKFLT)
+  case SIGSTKFLT      : return "SIGSTKFLT-Stack fault";
+#elif defined(SIGEMT)
+  case SIGEMT         : return "SIGEMT-Emulator trap";
+#endif
+  case SIGCHLD        : return "SIGCHLD-Child process status";
+  case SIGCONT        : return "SIGCONT-Continued";
+  case SIGSTOP        : return "SIGSTOP-Stopped (signal)";
+  case SIGTSTP        : return "SIGTSTP-Stopped";
+  case SIGTTIN        : return "SIGTTIN-Stopped (tty input)";
+  case SIGTTOU        : return "SIGTTOU-Stopped (tty output)";
+  case SIGURG         : return "SIGURG-Urgent I/O condition";
+  case SIGXCPU        : return "SIGXCPU-CPU time limit exceeded";
+  case SIGXFSZ        : return "SIGXFSZ-File size limit exceeded";
+  case SIGVTALRM      : return "SIGVTALRM-Virtual timer expired";
+  case SIGPROF        : return "SIGPROF-Profiling timer expired";
+  case SIGWINCH       : return "SIGWINCH-Window changed";
+  case SIGPOLL        : return "SIGPOLL-I/O possible";
+  case SIGPWR         : return "SIGPWR-Power failure";
+  case SIGSYS         : return "SIGSYS-Bad system call";
+  default: break;
+  }
+
+  return "unknown";
 }
 
 #else
