@@ -18,9 +18,17 @@ fn links_correctly() {
 
 #[test]
 fn reedsol_wrapper() {
+    use rand::Rng;
     use std::ffi::{c_ulong, c_void};
 
     const SHRED_SIZE: c_ulong = 1024 * 1024;
+    const DATA_SHARDS: usize = 32;
+    const PARITY_SHARDS: usize = 32;
+
+    let mut rng = rand::thread_rng();
+    let d_cnt = DATA_SHARDS;
+    let p_cnt = PARITY_SHARDS;
+    let shred_size = SHRED_SIZE as usize;
 
     // Create a new encoder
     let mut encoder = ReedSolEncoder::new(SHRED_SIZE);
@@ -34,36 +42,60 @@ fn reedsol_wrapper() {
     assert!(result.is_ok(), "Encoding failed");
 
     // Simulate data loss
-    let mut erased_indices: Vec<(usize, usize)> = Vec::new();
-    for i in 0..5 {
-        let start = i * SHRED_SIZE as usize;
-        let end = (i + 1) * SHRED_SIZE as usize;
-        for byte in encoder.data[start..end].iter_mut() {
-            *byte = 0;
+    for e_cnt in 0..=p_cnt + 1 {
+        let mut erased_truth = Vec::new();
+        let mut erased_cnt = 0;
+
+        let mut recoverer = ReedSolRecover::new(SHRED_SIZE);
+
+        let mut encoder = ReedSolEncoder::new(SHRED_SIZE);
+        encoder.add_data();
+        encoder.add_parity();
+
+        for i in 0..d_cnt {
+            if rng.gen_range(0..(d_cnt + p_cnt - i)) < (e_cnt - erased_cnt) {
+                erased_truth.push(encoder.data[i * shred_size..(i + 1) * shred_size].to_vec());
+                recoverer.add_erased_shred(
+                    1,
+                    &mut encoder.data[erased_cnt * shred_size..(erased_cnt + 1) * shred_size],
+                );
+                erased_cnt += 1;
+            } else {
+                recoverer
+                    .add_received_shred(1, &encoder.data[i * shred_size..(i + 1) * shred_size]);
+            }
         }
-        erased_indices.push((start, end));
+
+        for i in 0..p_cnt {
+            if rng.gen_range(0..(p_cnt - i)) < (e_cnt - erased_cnt) {
+                erased_truth.push(encoder.parity[i * shred_size..(i + 1) * shred_size].to_vec());
+                recoverer.add_erased_shred(
+                    0,
+                    &mut encoder.parity[erased_cnt * shred_size..(erased_cnt + 1) * shred_size],
+                );
+                erased_cnt += 1;
+            } else {
+                recoverer
+                    .add_received_shred(0, &encoder.parity[i * shred_size..(i + 1) * shred_size]);
+            }
+        }
+
+        assert_eq!(erased_cnt, e_cnt);
+
+        let retval = recoverer.finish();
+
+        if e_cnt > p_cnt {
+            assert_eq!(retval, Err("Partial recovery"));
+            continue;
+        }
+
+        assert_eq!(retval, Ok(()));
+
+        for i in 0..e_cnt {
+            assert_eq!(
+                erased_truth[i],
+                encoder.data[i * shred_size..(i + 1) * shred_size]
+            );
+        }
     }
-
-    // Start recovery
-    let mut recoverer = ReedSolRecover::new(SHRED_SIZE);
-
-    // Add erased data shreds to the recoverer
-    for (start, end) in &erased_indices {
-        let shred = &mut encoder.data[*start..*end];
-        recoverer.add_erased_shred(1, shred);
-    }
-
-    // Add received data shreds to the recoverer
-    for shred in encoder.data.chunks(SHRED_SIZE as usize) {
-        recoverer.add_received_shred(1, shred);
-    }
-
-    // Add received parity shreds to the recoverer
-    for shred in encoder.parity.chunks(SHRED_SIZE as usize) {
-        recoverer.add_received_shred(0, shred);
-    }
-
-    // Finish recovery
-    let recovery_result = recoverer.finish();
-    assert!(recovery_result.is_ok(), "Recovery failed");
 }
