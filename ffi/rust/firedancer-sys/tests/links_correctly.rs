@@ -26,9 +26,9 @@ fn reedsol_wrapper() {
     const PARITY_SHARDS: usize = 32;
 
     let mut rng = rand::thread_rng();
-    let d_cnt = DATA_SHARDS;
-    let p_cnt = PARITY_SHARDS;
-    let shred_size = SHRED_SIZE as usize;
+    let data_shard_count = DATA_SHARDS;
+    let parity_shard_count = PARITY_SHARDS;
+    let shred_size_in_bytes = SHRED_SIZE as usize;
 
     // Create a new encoder
     let mut encoder = ReedSolEncoder::new(SHRED_SIZE);
@@ -38,63 +38,75 @@ fn reedsol_wrapper() {
     encoder.add_parity();
 
     // Finish encoding
-    let result = encoder.finish();
-    assert!(result.is_ok(), "Encoding failed");
+    let encoding_result = encoder.finish();
+    assert!(encoding_result.is_ok(), "Encoding failed");
 
     // Simulate data loss
-    for e_cnt in 0..=p_cnt + 1 {
-        let mut erased_truth = Vec::new();
-        let mut erased_cnt = 0;
+    for erased_shard_count in 0..=parity_shard_count + 1 {
+        let mut erased_data_truth = Vec::new();
+        let mut total_erased_count = 0;
 
         let mut recoverer = ReedSolRecover::new(SHRED_SIZE);
 
-        let mut encoder = ReedSolEncoder::new(SHRED_SIZE);
-        encoder.add_data();
-        encoder.add_parity();
-
-        for i in 0..d_cnt {
-            if rng.gen_range(0..(d_cnt + p_cnt - i)) < (e_cnt - erased_cnt) {
-                erased_truth.push(encoder.data[i * shred_size..(i + 1) * shred_size].to_vec());
+        for i in 0..data_shard_count {
+            if rng.gen_range(0..(data_shard_count + parity_shard_count - i))
+                < (erased_shard_count - total_erased_count)
+            {
+                erased_data_truth.push(
+                    encoder.data[i * shred_size_in_bytes..(i + 1) * shred_size_in_bytes].to_vec(),
+                );
                 recoverer.add_erased_shred(
                     1,
-                    &mut encoder.data[erased_cnt * shred_size..(erased_cnt + 1) * shred_size],
+                    &mut encoder.data[total_erased_count * shred_size_in_bytes
+                        ..(total_erased_count + 1) * shred_size_in_bytes],
                 );
-                erased_cnt += 1;
+                total_erased_count += 1;
             } else {
-                recoverer
-                    .add_received_shred(1, &encoder.data[i * shred_size..(i + 1) * shred_size]);
+                recoverer.add_received_shred(
+                    1,
+                    &encoder.data[i * shred_size_in_bytes..(i + 1) * shred_size_in_bytes],
+                );
             }
         }
 
-        for i in 0..p_cnt {
-            if rng.gen_range(0..(p_cnt - i)) < (e_cnt - erased_cnt) {
-                erased_truth.push(encoder.parity[i * shred_size..(i + 1) * shred_size].to_vec());
+        let mut parity_erased_count = 0;
+        for i in 0..parity_shard_count {
+            if rng.gen_range(0..(parity_shard_count - i))
+                < (erased_shard_count - total_erased_count)
+            {
+                erased_data_truth.push(
+                    encoder.parity[i * shred_size_in_bytes..(i + 1) * shred_size_in_bytes].to_vec(),
+                );
                 recoverer.add_erased_shred(
                     0,
-                    &mut encoder.parity[erased_cnt * shred_size..(erased_cnt + 1) * shred_size],
+                    &mut encoder.parity[parity_erased_count * shred_size_in_bytes
+                        ..(parity_erased_count + 1) * shred_size_in_bytes],
                 );
-                erased_cnt += 1;
+                parity_erased_count += 1;
+                total_erased_count += 1;
             } else {
-                recoverer
-                    .add_received_shred(0, &encoder.parity[i * shred_size..(i + 1) * shred_size]);
+                recoverer.add_received_shred(
+                    0,
+                    &encoder.parity[i * shred_size_in_bytes..(i + 1) * shred_size_in_bytes],
+                );
             }
         }
 
-        assert_eq!(erased_cnt, e_cnt);
+        assert_eq!(total_erased_count, erased_shard_count);
 
-        let retval = recoverer.finish();
+        let recovery_result = recoverer.finish();
 
-        if e_cnt > p_cnt {
-            assert_eq!(retval, Err("Partial recovery"));
+        if erased_shard_count > parity_shard_count {
+            assert_eq!(recovery_result, Err("Partial recovery"));
             continue;
         }
 
-        assert_eq!(retval, Ok(()));
+        assert_eq!(recovery_result, Ok(()));
 
-        for i in 0..e_cnt {
+        for i in 0..erased_shard_count {
             assert_eq!(
-                erased_truth[i],
-                encoder.data[i * shred_size..(i + 1) * shred_size]
+                erased_data_truth[i],
+                encoder.data[i * shred_size_in_bytes..(i + 1) * shred_size_in_bytes]
             );
         }
     }
