@@ -14,19 +14,19 @@ const DATA_SHARDS: usize = 32;
 const PARITY_SHARDS: usize = 32;
 
 pub struct ReedSolEncoder {
-    reedsol: *mut fd_reedsol_t,
+    reedsol: Box<fd_reedsol_t>,
     pub data: Vec<u8>,
     pub parity: Vec<u8>,
 }
 
 impl ReedSolEncoder {
     pub fn new(shred_size: c_ulong) -> Self {
-        let mut mem = [0; FD_REEDSOL_FOOTPRINT as usize];
+        let mut mem = Box::new([0; FD_REEDSOL_FOOTPRINT as usize]);
         let reedsol =
-            unsafe { fd_reedsol_encode_init(mem.as_mut_ptr() as *mut c_void, shred_size) };
+            unsafe { fd_reedsol_encode_init(Box::into_raw(mem) as *mut c_void, shred_size) };
 
         Self {
-            reedsol,
+            reedsol: unsafe { Box::from_raw(reedsol) },
             data: vec![1; DATA_SHARDS * shred_size as usize],
             parity: vec![0; PARITY_SHARDS * shred_size as usize],
         }
@@ -34,20 +34,28 @@ impl ReedSolEncoder {
 
     pub fn add_data(&mut self) {
         for d in self.data.chunks_mut(SHRED_SIZE as usize) {
-            unsafe { fd_reedsol_encode_add_data_shred(self.reedsol, d.as_ptr() as *const c_void) };
+            unsafe {
+                fd_reedsol_encode_add_data_shred(
+                    self.reedsol.as_mut(),
+                    d.as_mut_ptr() as *mut c_void,
+                )
+            };
         }
     }
 
     pub fn add_parity(&mut self) {
         for p in self.parity.chunks_mut(SHRED_SIZE as usize) {
             unsafe {
-                fd_reedsol_encode_add_parity_shred(self.reedsol, p.as_mut_ptr() as *mut c_void)
+                fd_reedsol_encode_add_parity_shred(
+                    self.reedsol.as_mut(),
+                    p.as_mut_ptr() as *mut c_void,
+                )
             };
         }
     }
 
     pub fn finish(&mut self) -> Result<(), &'static str> {
-        unsafe { fd_reedsol_encode_fini(self.reedsol) };
+        unsafe { fd_reedsol_encode_fini(self.reedsol.as_mut() as *mut fd_reedsol_t) };
 
         if !self.parity.iter().all(|p| *p == 1) {
             Err("Failed to encode properly")
@@ -58,30 +66,40 @@ impl ReedSolEncoder {
 }
 
 pub struct ReedSolRecover {
-    rs: *mut fd_reedsol_t,
+    rs: Box<fd_reedsol_t>,
 }
 
 impl ReedSolRecover {
     pub fn new(shred_size: c_ulong) -> Self {
-        let mut mem = [0; FD_REEDSOL_FOOTPRINT as usize];
-        let rs = unsafe { fd_reedsol_recover_init(mem.as_mut_ptr() as *mut c_void, shred_size) };
-        Self { rs }
+        let mut mem = Box::new([0; FD_REEDSOL_FOOTPRINT as usize]);
+        let rs = unsafe { fd_reedsol_recover_init(Box::into_raw(mem) as *mut c_void, shred_size) };
+        Self {
+            rs: unsafe { Box::from_raw(rs) },
+        }
     }
 
     pub fn add_erased_shred(&mut self, flag: c_int, shred: &mut [u8]) {
         unsafe {
-            fd_reedsol_recover_add_erased_shred(self.rs, flag, shred.as_mut_ptr() as *mut c_void)
+            fd_reedsol_recover_add_erased_shred(
+                self.rs.as_mut() as *mut _,
+                flag,
+                shred.as_mut_ptr() as *mut c_void,
+            )
         };
     }
 
     pub fn add_received_shred(&mut self, flag: c_int, shred: &[u8]) {
         unsafe {
-            fd_reedsol_recover_add_rcvd_shred(self.rs, flag, shred.as_ptr() as *const c_void)
+            fd_reedsol_recover_add_rcvd_shred(
+                self.rs.as_mut() as *mut _,
+                flag,
+                shred.as_ptr() as *const c_void,
+            )
         };
     }
 
-    pub fn finish(&mut self) -> Result<(), &'static str> {
-        let result = unsafe { fd_reedsol_recover_fini(self.rs) };
+    pub fn finish(self) -> Result<(), &'static str> {
+        let result = unsafe { fd_reedsol_recover_fini(Box::into_raw(self.rs)) };
         match result {
             x if x == FD_REEDSOL_SUCCESS as i32 => Ok(()),
             x if x == FD_REEDSOL_ERR_CORRUPT as i32 => Err("Data is corrupted"),
