@@ -26,3 +26,12 @@ rand = "0.8.5"
 
 [build-dependencies]
 bindgen = { version = "0.66.1", features = ["experimental"] }
+
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "reedsol"
+harness = false
+path = "src/ballet/benches/reedsol.rs"
